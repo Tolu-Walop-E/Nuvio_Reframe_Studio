@@ -21,7 +21,7 @@ Later, Nuvio can load a pack by one layout id/tag. Until then, packs are design 
   "schemaVersion": 1,
   "id": "my-home",
   "name": "My Home",
-  "canvas": { "width": 1920, "height": 1080 },
+  "canvas": { "width": 1920, "height": 1600 },
   "blocks": [
     {
       "id": "hero-1",
@@ -37,7 +37,7 @@ Later, Nuvio can load a pack by one layout id/tag. Until then, packs are design 
 }
 ```
 
-Allowed block types and data sources live in `src/catalog/`.
+`canvas` grows with content. A dashed **1920×1080** guide marks the first TV screen; rails/collections can sit below that and Nuvio scrolls into them.
 
 ## Develop
 

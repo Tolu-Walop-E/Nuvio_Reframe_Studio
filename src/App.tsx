@@ -4,10 +4,12 @@ import { sourcesForBlock } from "./catalog/dataSources";
 import { DEMO_PACKS, clonePack, parseViewPack } from "./demos";
 import { MockBlockPreview } from "./preview/MockBlockPreview";
 import {
-  CANVAS_HEIGHT,
-  CANVAS_WIDTH,
+  VIEWPORT_HEIGHT,
+  VIEWPORT_WIDTH,
+  computeCanvasSize,
   createEmptyPack,
   slugify,
+  withComputedCanvas,
   type ViewBlock,
   type ViewPack,
 } from "./types/viewPack";
@@ -43,31 +45,37 @@ export default function App() {
     [pack.blocks, selectedId],
   );
 
+  const canvasSize = useMemo(() => computeCanvasSize(pack.blocks), [pack.blocks]);
+
   const updateBlock = useCallback((id: string, patch: Partial<ViewBlock>) => {
-    setPack((prev) => ({
-      ...prev,
-      blocks: prev.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
-    }));
+    setPack((prev) =>
+      withComputedCanvas({
+        ...prev,
+        blocks: prev.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+      }),
+    );
   }, []);
 
   const deleteBlock = useCallback((id: string) => {
-    setPack((prev) => ({
-      ...prev,
-      blocks: prev.blocks.filter((b) => b.id !== id),
-    }));
+    setPack((prev) =>
+      withComputedCanvas({
+        ...prev,
+        blocks: prev.blocks.filter((b) => b.id !== id),
+      }),
+    );
     setSelectedId((cur) => (cur === id ? null : cur));
   }, []);
 
   const clearAll = () => {
     if (!window.confirm("Delete every block on this canvas?")) return;
-    setPack((prev) => ({ ...prev, blocks: [] }));
+    setPack((prev) => withComputedCanvas({ ...prev, blocks: [] }));
     setSelectedId(null);
   };
 
   const loadDemo = (demoId: string) => {
     const demo = DEMO_PACKS.find((d) => d.id === demoId);
     if (!demo) return;
-    const next = clonePack(demo.pack);
+    const next = withComputedCanvas(clonePack(demo.pack));
     setPack(next);
     setSelectedId(next.blocks[0]?.id ?? null);
     setMode("preview");
@@ -76,7 +84,7 @@ export default function App() {
   const importFile = async (file: File) => {
     try {
       const text = await file.text();
-      const next = parseViewPack(JSON.parse(text));
+      const next = withComputedCanvas(parseViewPack(JSON.parse(text)));
       setPack(next);
       setSelectedId(next.blocks[0]?.id ?? null);
       setMode("preview");
@@ -107,14 +115,14 @@ export default function App() {
       id: uid(type),
       type,
       x: 0,
-      y: Math.min(y, CANVAS_HEIGHT - def.defaultH),
+      y: Math.max(0, y),
       w: def.defaultW,
       h: def.defaultH,
       dataSource: sourcesForBlock(type)[0]?.id ?? "none",
       trailer: type === "hero" || type === "mediaRail",
       label: def.label,
     };
-    setPack((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
+    setPack((prev) => withComputedCanvas({ ...prev, blocks: [...prev.blocks, block] }));
     setSelectedId(block.id);
     setMode("edit");
   };
@@ -129,8 +137,8 @@ export default function App() {
 
     if (drag.mode === "move") {
       updateBlock(drag.blockId, {
-        x: Math.round(clamp(drag.orig.x + dx, 0, CANVAS_WIDTH - drag.orig.w)),
-        y: Math.round(clamp(drag.orig.y + dy, 0, CANVAS_HEIGHT - drag.orig.h)),
+        x: Math.round(Math.max(0, drag.orig.x + dx)),
+        y: Math.round(Math.max(0, drag.orig.y + dy)),
       });
       return;
     }
@@ -176,12 +184,11 @@ export default function App() {
   };
 
   const exportPack = () => {
-    const payload: ViewPack = {
+    const payload = withComputedCanvas({
       ...pack,
       id: slugify(pack.name),
       schemaVersion: 1,
-      canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-    };
+    });
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
     });
@@ -324,11 +331,17 @@ export default function App() {
             <div
               className={`canvas${mode === "preview" ? " previewing" : ""}`}
               style={{
-                width: CANVAS_WIDTH,
-                height: CANVAS_HEIGHT,
+                width: canvasSize.width,
+                height: canvasSize.height,
                 transform: `scale(${scale})`,
               }}
             >
+              <div
+                className="viewport-frame"
+                style={{ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }}
+              >
+                <span className="viewport-label">TV first screen · 1920×1080</span>
+              </div>
               {pack.blocks.map((block) => (
                 <div
                   key={block.id}
@@ -380,7 +393,12 @@ export default function App() {
             </div>
           </div>
           <p className="stage-caption">
-            {mode === "preview" ? "Preview" : "Edit"} · 1920 × 1080 · {(scale * 100).toFixed(0)}%
+            {mode === "preview" ? "Preview" : "Edit"} · canvas{" "}
+            {canvasSize.width}×{canvasSize.height}
+            {canvasSize.height > VIEWPORT_HEIGHT || canvasSize.width > VIEWPORT_WIDTH
+              ? " · beyond first screen"
+              : ""}{" "}
+            · {(scale * 100).toFixed(0)}%
             {selectedId ? ` · selected ${selectedId}` : ""}
           </p>
         </main>
@@ -451,10 +469,6 @@ export default function App() {
   );
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
-}
-
 function resizeFromCorner(
   orig: ViewBlock,
   corner: ResizeCorner,
@@ -476,7 +490,6 @@ function resizeFromCorner(
   if (corner.includes("n")) top = orig.y + dy;
   if (corner.includes("s")) nextBottom = bottom + dy;
 
-  // Enforce minimum size by anchoring the opposite edge.
   if (nextRight - left < minW) {
     if (corner.includes("w")) left = nextRight - minW;
     else nextRight = left + minW;
@@ -486,11 +499,11 @@ function resizeFromCorner(
     else nextBottom = top + minH;
   }
 
-  // Keep inside the canvas.
-  left = clamp(left, 0, CANVAS_WIDTH - minW);
-  top = clamp(top, 0, CANVAS_HEIGHT - minH);
-  nextRight = clamp(nextRight, left + minW, CANVAS_WIDTH);
-  nextBottom = clamp(nextBottom, top + minH, CANVAS_HEIGHT);
+  // Origin stays on-canvas; right/bottom may grow past the first TV screen.
+  left = Math.max(0, left);
+  top = Math.max(0, top);
+  if (nextRight < left + minW) nextRight = left + minW;
+  if (nextBottom < top + minH) nextBottom = top + minH;
 
   return {
     x: Math.round(left),

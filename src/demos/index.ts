@@ -1,5 +1,5 @@
 import type { ViewBlock, ViewPack } from "../types/viewPack";
-import { CANVAS_HEIGHT, CANVAS_WIDTH } from "../types/viewPack";
+import { VIEWPORT_HEIGHT, VIEWPORT_WIDTH, withComputedCanvas } from "../types/viewPack";
 
 export type DemoPack = {
   id: string;
@@ -8,11 +8,11 @@ export type DemoPack = {
   pack: ViewPack;
 };
 
-const netflixLike: ViewPack = {
+const netflixLike: ViewPack = withComputedCanvas({
   schemaVersion: 1,
   id: "demo-netflix-home",
   name: "Demo · Netflix home",
-  canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+  canvas: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
   blocks: [
     {
       id: "nav",
@@ -58,15 +58,25 @@ const netflixLike: ViewPack = {
       trailer: false,
       label: "Popular Movies",
     },
+    {
+      id: "collections-low",
+      type: "collectionRail",
+      x: 0,
+      y: 1120,
+      w: 1920,
+      h: 200,
+      dataSource: "collections",
+      trailer: false,
+      label: "Collections",
+    },
   ],
-};
+});
 
-/** Denser Xperience-inspired home: nav, tall hero, genre strip, several discovery rails. */
-const xperienceLike: ViewPack = {
+const xperienceLike: ViewPack = withComputedCanvas({
   schemaVersion: 1,
   id: "demo-xperience-home",
   name: "Demo · Xperience home",
-  canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+  canvas: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
   blocks: [
     {
       id: "nav",
@@ -116,21 +126,43 @@ const xperienceLike: ViewPack = {
       id: "collections",
       type: "collectionRail",
       x: 0,
-      y: 890,
+      y: 900,
       w: 1920,
-      h: 170,
+      h: 180,
       dataSource: "collections",
       trailer: false,
       label: "Collections",
     },
+    {
+      id: "more-movies",
+      type: "mediaRail",
+      x: 0,
+      y: 1120,
+      w: 1920,
+      h: 220,
+      dataSource: "catalogPopularMovies",
+      trailer: false,
+      label: "More movies",
+    },
+    {
+      id: "more-shows",
+      type: "mediaRail",
+      x: 0,
+      y: 1380,
+      w: 1920,
+      h: 220,
+      dataSource: "catalogPopularShows",
+      trailer: false,
+      label: "More shows",
+    },
   ],
-};
+});
 
-const sparseHero: ViewPack = {
+const sparseHero: ViewPack = withComputedCanvas({
   schemaVersion: 1,
   id: "demo-hero-focus",
   name: "Demo · Hero focus",
-  canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+  canvas: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
   blocks: [
     {
       id: "nav",
@@ -166,19 +198,19 @@ const sparseHero: ViewPack = {
       label: "Because you watched",
     },
   ],
-};
+});
 
 export const DEMO_PACKS: DemoPack[] = [
   {
     id: netflixLike.id,
     name: netflixLike.name,
-    blurb: "Classic Netflix-style hero + CW + movies.",
+    blurb: "Netflix-style home with collections below the first screen.",
     pack: netflixLike,
   },
   {
     id: xperienceLike.id,
     name: xperienceLike.name,
-    blurb: "Xperience-like density: full-bleed hero, genres, trending, collections.",
+    blurb: "Xperience-like density that scrolls past 1080.",
     pack: xperienceLike,
   },
   {
@@ -198,14 +230,14 @@ export function parseViewPack(raw: unknown): ViewPack {
   const obj = raw as Partial<ViewPack>;
   if (obj.schemaVersion !== 1) throw new Error("Unsupported schemaVersion");
   if (!Array.isArray(obj.blocks)) throw new Error("Pack missing blocks[]");
-  return {
+  return withComputedCanvas({
     schemaVersion: 1,
     id: String(obj.id ?? "imported"),
     name: String(obj.name ?? "Imported view"),
     canvas: {
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
+      width: VIEWPORT_WIDTH,
+      height: VIEWPORT_HEIGHT,
     },
     blocks: obj.blocks as ViewBlock[],
-  };
+  });
 }
