@@ -121,6 +121,8 @@ const xperienceLike: ViewPack = withComputedCanvas({
       dataSource: "catalogPopularShows",
       trailer: true,
       label: "Trending",
+      posterGrow: true,
+      contentAlign: "start",
     },
     {
       id: "collections",
@@ -132,6 +134,7 @@ const xperienceLike: ViewPack = withComputedCanvas({
       dataSource: "collections",
       trailer: false,
       label: "Collections",
+      contentAlign: "center",
     },
     {
       id: "more-movies",
@@ -143,6 +146,8 @@ const xperienceLike: ViewPack = withComputedCanvas({
       dataSource: "catalogPopularMovies",
       trailer: false,
       label: "More movies",
+      posterGrow: false,
+      contentAlign: "start",
     },
     {
       id: "more-shows",

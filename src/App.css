@@ -352,6 +352,29 @@ select {
   text-transform: uppercase;
 }
 
+.snap-guide {
+  position: absolute;
+  background: rgba(240, 193, 74, 0.85);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.snap-guide.vertical {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.snap-guide.horizontal {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
 .block {
   position: absolute;
   z-index: 2;
@@ -623,12 +646,21 @@ select {
   height: 100%;
 }
 
+.mock-row.align-center {
+  justify-content: center;
+}
+
+.mock-row.align-start {
+  justify-content: flex-start;
+}
+
 .mock-poster {
   flex: 0 0 auto;
   border-radius: 10px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   position: relative;
   overflow: hidden;
+  transition: transform 160ms ease, width 160ms ease, height 160ms ease;
 }
 
 .mock-poster.landscape {
@@ -638,7 +670,11 @@ select {
 .mock-poster.focused {
   outline: 3px solid #fff;
   outline-offset: 2px;
-  transform: translateY(-4px);
+}
+
+.mock-poster.focused.grows {
+  transform: translateY(-10px) scale(1.18);
+  z-index: 2;
 }
 
 .mock-progress {

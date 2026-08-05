@@ -64,7 +64,7 @@ export function MockBlockPreview({ block, preview }: Props) {
     return (
       <div className={`mock mock-rail${preview ? " rich" : ""}`}>
         <div className="mock-rail-title">{block.label || "Genres"}</div>
-        <div className="mock-row">
+        <div className={`mock-row align-${block.contentAlign ?? "start"}`}>
           {GENRES.map((g) => (
             <div key={g} className="mock-chip">
               {g}
@@ -80,15 +80,23 @@ export function MockBlockPreview({ block, preview }: Props) {
   }
 
   const landscape = block.type === "collectionRail" || block.dataSource === "continueWatching";
+  const grow = block.posterGrow !== false && !landscape;
   const count = landscape ? 7 : 10;
   return (
     <div className={`mock mock-rail${preview ? " rich" : ""}`}>
       <div className="mock-rail-title">{block.label || block.type}</div>
-      <div className="mock-row">
+      <div className={`mock-row align-${block.contentAlign ?? "start"}`}>
         {Array.from({ length: count }, (_, i) => (
           <div
             key={i}
-            className={`mock-poster${landscape ? " landscape" : ""}${i === 0 && preview ? " focused" : ""}`}
+            className={[
+              "mock-poster",
+              landscape ? "landscape" : "portrait",
+              i === 0 && preview ? "focused" : "",
+              i === 0 && preview && grow ? "grows" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             style={posterStyle(i + hash(block.id), landscape)}
           >
             {landscape && block.dataSource === "continueWatching" && (

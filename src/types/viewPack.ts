@@ -11,6 +11,12 @@ export type ViewBlock = {
   dataSource: DataSourceId;
   trailer: boolean;
   label?: string;
+  /** Horizontal placement bias for snap / center controls. */
+  hAlign?: "start" | "center";
+  /** Content row alignment inside rails. */
+  contentAlign?: "start" | "center";
+  /** Vertical/portrait poster focus-grow (media rails). Default true. */
+  posterGrow?: boolean;
 };
 
 export type ViewPack = {
@@ -110,6 +116,46 @@ export function createEmptyPack(name = "Untitled home"): ViewPack {
     canvas: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
     blocks,
   });
+}
+
+export function centerBlockX(block: Pick<ViewBlock, "w">, guideWidth = VIEWPORT_WIDTH): number {
+  return Math.max(0, Math.round((guideWidth - block.w) / 2));
+}
+
+export function snapBlockPosition(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  opts?: { threshold?: number; guideWidth?: number; guideHeight?: number },
+): { x: number; y: number; snappedX: boolean; snappedY: boolean } {
+  const threshold = opts?.threshold ?? 28;
+  const guideWidth = opts?.guideWidth ?? VIEWPORT_WIDTH;
+  const guideHeight = opts?.guideHeight ?? VIEWPORT_HEIGHT;
+  const centerX = (guideWidth - w) / 2;
+  const centerY = (guideHeight - h) / 2;
+  let nextX = Math.max(0, x);
+  let nextY = Math.max(0, y);
+  let snappedX = false;
+  let snappedY = false;
+
+  if (Math.abs(nextX - centerX) <= threshold) {
+    nextX = Math.round(centerX);
+    snappedX = true;
+  } else if (Math.abs(nextX) <= threshold) {
+    nextX = 0;
+    snappedX = true;
+  }
+
+  if (Math.abs(nextY - centerY) <= threshold) {
+    nextY = Math.round(Math.max(0, centerY));
+    snappedY = true;
+  } else if (Math.abs(nextY) <= threshold) {
+    nextY = 0;
+    snappedY = true;
+  }
+
+  return { x: Math.round(nextX), y: Math.round(nextY), snappedX, snappedY };
 }
 
 export function slugify(value: string): string {

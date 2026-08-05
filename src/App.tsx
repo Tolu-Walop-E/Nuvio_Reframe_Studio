@@ -6,9 +6,11 @@ import { MockBlockPreview } from "./preview/MockBlockPreview";
 import {
   VIEWPORT_HEIGHT,
   VIEWPORT_WIDTH,
+  centerBlockX,
   computeCanvasSize,
   createEmptyPack,
   slugify,
+  snapBlockPosition,
   withComputedCanvas,
   type ViewBlock,
   type ViewPack,
@@ -37,6 +39,10 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>("hero");
   const [scale, setScale] = useState(0.42);
   const [mode, setMode] = useState<StudioMode>("preview");
+  const [snapGuides, setSnapGuides] = useState<{ x: boolean; y: boolean }>({
+    x: false,
+    y: false,
+  });
   const dragRef = useRef<DragState | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -121,10 +127,21 @@ export default function App() {
       dataSource: sourcesForBlock(type)[0]?.id ?? "none",
       trailer: type === "hero" || type === "mediaRail",
       label: def.label,
+      hAlign: "start",
+      contentAlign: "start",
+      posterGrow: type === "mediaRail",
     };
     setPack((prev) => withComputedCanvas({ ...prev, blocks: [...prev.blocks, block] }));
     setSelectedId(block.id);
     setMode("edit");
+  };
+
+  const centerSelected = () => {
+    if (!selected) return;
+    updateBlock(selected.id, {
+      x: centerBlockX(selected, VIEWPORT_WIDTH),
+      hAlign: "center",
+    });
   };
 
   const onPointerMove = (event: React.PointerEvent) => {
@@ -136,13 +153,22 @@ export default function App() {
     const def = blockDef(drag.orig.type);
 
     if (drag.mode === "move") {
+      const snapped = snapBlockPosition(
+        drag.orig.x + dx,
+        drag.orig.y + dy,
+        drag.orig.w,
+        drag.orig.h,
+      );
+      setSnapGuides({ x: snapped.snappedX, y: snapped.snappedY });
       updateBlock(drag.blockId, {
-        x: Math.round(Math.max(0, drag.orig.x + dx)),
-        y: Math.round(Math.max(0, drag.orig.y + dy)),
+        x: snapped.x,
+        y: snapped.y,
+        hAlign: snapped.snappedX && snapped.x === centerBlockX(drag.orig) ? "center" : "start",
       });
       return;
     }
 
+    setSnapGuides({ x: false, y: false });
     const corner = drag.corner ?? "se";
     const next = resizeFromCorner(drag.orig, corner, dx, dy, def.minW, def.minH);
     updateBlock(drag.blockId, next);
@@ -150,6 +176,7 @@ export default function App() {
 
   const endDrag = () => {
     dragRef.current = null;
+    setSnapGuides({ x: false, y: false });
   };
 
   const startMove = (block: ViewBlock, event: React.PointerEvent) => {
@@ -341,6 +368,8 @@ export default function App() {
                 style={{ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }}
               >
                 <span className="viewport-label">TV first screen · 1920×1080</span>
+                {snapGuides.x && <div className="snap-guide vertical" />}
+                {snapGuides.y && <div className="snap-guide horizontal" />}
               </div>
               {pack.blocks.map((block) => (
                 <div
@@ -447,6 +476,42 @@ export default function App() {
                   Use existing TrailerPlayer when focused
                 </label>
               )}
+              {(selected.type === "mediaRail" ||
+                selected.type === "genreRail" ||
+                selected.type === "collectionRail") && (
+                <>
+                  <label>
+                    Content align
+                    <select
+                      value={selected.contentAlign ?? "start"}
+                      onChange={(e) =>
+                        updateBlock(selected.id, {
+                          contentAlign: e.target.value as ViewBlock["contentAlign"],
+                        })
+                      }
+                    >
+                      <option value="start">Start (left)</option>
+                      <option value="center">Center</option>
+                    </select>
+                  </label>
+                  {selected.type === "mediaRail" &&
+                    selected.dataSource !== "continueWatching" && (
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selected.posterGrow !== false}
+                          onChange={(e) =>
+                            updateBlock(selected.id, { posterGrow: e.target.checked })
+                          }
+                        />
+                        Vertical posters grow when focused
+                      </label>
+                    )}
+                </>
+              )}
+              <button type="button" className="btn ghost full" onClick={centerSelected}>
+                Snap center on TV screen
+              </button>
               <div className="geometry">
                 <span>
                   x {selected.x} · y {selected.y}
