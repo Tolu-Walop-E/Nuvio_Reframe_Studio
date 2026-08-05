@@ -1,6 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BLOCK_CATALOG, blockDef, type BlockType } from "./catalog/blocks";
 import { sourcesForBlock } from "./catalog/dataSources";
+import { DEMO_PACKS, clonePack, parseViewPack } from "./demos";
+import { MockBlockPreview } from "./preview/MockBlockPreview";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -12,6 +14,7 @@ import {
 import "./App.css";
 
 type DragMode = "move" | "resize";
+type StudioMode = "edit" | "preview";
 
 type DragState = {
   mode: DragMode;
@@ -26,11 +29,12 @@ function uid(prefix: string) {
 }
 
 export default function App() {
-  const [pack, setPack] = useState<ViewPack>(() => createEmptyPack("Netflix-like home"));
-  const [selectedId, setSelectedId] = useState<string | null>("hero-1");
-  const [scale, setScale] = useState(0.45);
+  const [pack, setPack] = useState<ViewPack>(() => clonePack(DEMO_PACKS[1].pack));
+  const [selectedId, setSelectedId] = useState<string | null>("hero");
+  const [scale, setScale] = useState(0.42);
+  const [mode, setMode] = useState<StudioMode>("preview");
   const dragRef = useRef<DragState | null>(null);
-  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const selected = useMemo(
     () => pack.blocks.find((b) => b.id === selectedId) ?? null,
@@ -44,10 +48,59 @@ export default function App() {
     }));
   }, []);
 
+  const deleteBlock = useCallback((id: string) => {
+    setPack((prev) => ({
+      ...prev,
+      blocks: prev.blocks.filter((b) => b.id !== id),
+    }));
+    setSelectedId((cur) => (cur === id ? null : cur));
+  }, []);
+
+  const clearAll = () => {
+    if (!window.confirm("Delete every block on this canvas?")) return;
+    setPack((prev) => ({ ...prev, blocks: [] }));
+    setSelectedId(null);
+  };
+
+  const loadDemo = (demoId: string) => {
+    const demo = DEMO_PACKS.find((d) => d.id === demoId);
+    if (!demo) return;
+    const next = clonePack(demo.pack);
+    setPack(next);
+    setSelectedId(next.blocks[0]?.id ?? null);
+    setMode("preview");
+  };
+
+  const importFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const next = parseViewPack(JSON.parse(text));
+      setPack(next);
+      setSelectedId(next.blocks[0]?.id ?? null);
+      setMode("preview");
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to import pack");
+    }
+  };
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
+        return;
+      }
+      if (!selectedId) return;
+      event.preventDefault();
+      deleteBlock(selectedId);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [deleteBlock, selectedId]);
+
   const addBlock = (type: BlockType) => {
     const def = blockDef(type);
-    const y =
-      pack.blocks.reduce((max, b) => Math.max(max, b.y + b.h), 0) + 12;
+    const y = pack.blocks.reduce((max, b) => Math.max(max, b.y + b.h), 0) + 12;
     const block: ViewBlock = {
       id: uid(type),
       type,
@@ -61,18 +114,11 @@ export default function App() {
     };
     setPack((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
     setSelectedId(block.id);
-  };
-
-  const removeSelected = () => {
-    if (!selectedId) return;
-    setPack((prev) => ({
-      ...prev,
-      blocks: prev.blocks.filter((b) => b.id !== selectedId),
-    }));
-    setSelectedId(null);
+    setMode("edit");
   };
 
   const onPointerMove = (event: React.PointerEvent) => {
+    if (mode !== "edit") return;
     const drag = dragRef.current;
     if (!drag) return;
     const dx = (event.clientX - drag.startX) / scale;
@@ -96,16 +142,13 @@ export default function App() {
     dragRef.current = null;
   };
 
-  const startDrag = (
-    mode: DragMode,
-    block: ViewBlock,
-    event: React.PointerEvent,
-  ) => {
+  const startDrag = (dragMode: DragMode, block: ViewBlock, event: React.PointerEvent) => {
+    if (mode !== "edit") return;
     event.stopPropagation();
     event.preventDefault();
     setSelectedId(block.id);
     dragRef.current = {
-      mode,
+      mode: dragMode,
       blockId: block.id,
       startX: event.clientX,
       startY: event.clientY,
@@ -152,6 +195,22 @@ export default function App() {
             }
           />
         </label>
+        <div className="mode-toggle" role="group" aria-label="Studio mode">
+          <button
+            type="button"
+            className={mode === "edit" ? "active" : ""}
+            onClick={() => setMode("edit")}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className={mode === "preview" ? "active" : ""}
+            onClick={() => setMode("preview")}
+          >
+            Preview
+          </button>
+        </div>
         <div className="topbar-actions">
           <label className="zoom">
             Zoom
@@ -164,7 +223,7 @@ export default function App() {
               onChange={(e) => setScale(Number(e.target.value))}
             />
           </label>
-          <button type="button" className="btn ghost" onClick={removeSelected} disabled={!selectedId}>
+          <button type="button" className="btn ghost" onClick={() => selectedId && deleteBlock(selectedId)} disabled={!selectedId}>
             Delete
           </button>
           <button type="button" className="btn primary" onClick={exportPack}>
@@ -175,8 +234,49 @@ export default function App() {
 
       <div className="workspace">
         <aside className="rail">
+          <h2>Demos</h2>
+          <p className="hint">Load a starter layout, then tweak.</p>
+          <ul className="demo-list">
+            {DEMO_PACKS.map((demo) => (
+              <li key={demo.id}>
+                <button type="button" onClick={() => loadDemo(demo.id)}>
+                  <strong>{demo.name.replace(/^Demo · /, "")}</strong>
+                  <span>{demo.blurb}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <div className="rail-section">
+            <button type="button" className="btn ghost full" onClick={() => fileInputRef.current?.click()}>
+              Import view.json
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importFile(file);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="btn ghost full"
+              onClick={() => {
+                setPack(createEmptyPack("Blank home"));
+                setSelectedId(null);
+                setMode("edit");
+              }}
+            >
+              New blank
+            </button>
+          </div>
+
           <h2>Blocks</h2>
-          <p className="hint">Add a Nuvio TV building block. Drag and resize on the canvas.</p>
+          <p className="hint">Add a Nuvio TV building block.</p>
           <ul className="block-list">
             {BLOCK_CATALOG.map((b) => (
               <li key={b.type}>
@@ -191,21 +291,20 @@ export default function App() {
             <a href="https://github.com/Tolu-Walop-E/Nuvio_Reframe" target="_blank" rel="noreferrer">
               Nuvio TV repo
             </a>
-            <span>Packs stay design-only until the app loads them by id.</span>
+            <span>Delete: toolbar, block ×, or Del/Backspace.</span>
           </div>
         </aside>
 
         <main className="stage">
           <div
-            className="canvas-shell"
+            className={`canvas-shell mode-${mode}`}
             onPointerMove={onPointerMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
             onClick={() => setSelectedId(null)}
           >
             <div
-              ref={canvasRef}
-              className="canvas"
+              className={`canvas${mode === "preview" ? " previewing" : ""}`}
               style={{
                 width: CANVAS_WIDTH,
                 height: CANVAS_HEIGHT,
@@ -215,7 +314,7 @@ export default function App() {
               {pack.blocks.map((block) => (
                 <div
                   key={block.id}
-                  className={`block block-${block.type}${selectedId === block.id ? " selected" : ""}`}
+                  className={`block block-${block.type}${selectedId === block.id ? " selected" : ""}${mode === "preview" ? " preview" : ""}`}
                   style={{
                     left: block.x,
                     top: block.y,
@@ -228,14 +327,23 @@ export default function App() {
                     setSelectedId(block.id);
                   }}
                 >
-                  <div className="block-title">
-                    <span>{block.label || blockDef(block.type).label}</span>
-                    <span className="block-meta">
-                      {block.dataSource}
-                      {block.trailer ? " · trailer" : ""}
-                    </span>
-                  </div>
-                  {selectedId === block.id && (
+                  <MockBlockPreview block={block} preview={mode === "preview"} />
+                  {mode === "edit" && (
+                    <button
+                      type="button"
+                      className="block-delete"
+                      aria-label={`Delete ${block.label || block.type}`}
+                      title="Delete"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteBlock(block.id);
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      ×
+                    </button>
+                  )}
+                  {mode === "edit" && selectedId === block.id && (
                     <button
                       type="button"
                       className="resize-handle"
@@ -247,13 +355,16 @@ export default function App() {
               ))}
             </div>
           </div>
-          <p className="stage-caption">1920 × 1080 TV canvas · scale {(scale * 100).toFixed(0)}%</p>
+          <p className="stage-caption">
+            {mode === "preview" ? "Preview" : "Edit"} · 1920 × 1080 · {(scale * 100).toFixed(0)}%
+            {selectedId ? ` · selected ${selectedId}` : ""}
+          </p>
         </main>
 
         <aside className="inspector">
           <h2>Inspector</h2>
           {!selected ? (
-            <p className="hint">Select a block to bind data and trailer.</p>
+            <p className="hint">Select a block to bind data, toggle trailer, or delete it.</p>
           ) : (
             <div className="inspector-form">
               <label>
@@ -302,8 +413,14 @@ export default function App() {
                   {selected.w} × {selected.h}
                 </span>
               </div>
+              <button type="button" className="btn danger full" onClick={() => deleteBlock(selected.id)}>
+                Delete block
+              </button>
             </div>
           )}
+          <button type="button" className="btn ghost full danger-text" onClick={clearAll}>
+            Clear canvas
+          </button>
         </aside>
       </div>
     </div>
