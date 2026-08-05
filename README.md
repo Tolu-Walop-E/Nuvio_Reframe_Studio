@@ -39,12 +39,16 @@ Later, Nuvio can load a pack by one layout id/tag. Until then, packs are design 
 
 `canvas` grows with content. A dashed **1920×1080** guide marks the first TV screen; rails/collections can sit below that and Nuvio scrolls into them.
 
-## Develop
+## Nuvio account library
 
-```bash
-npm install
-npm run dev
-```
+In the left rail, open **Nuvio account**:
+
+1. Set your Supabase URL + anon/publishable key (same as the TV app `local.dev.properties`)
+2. Sign in with email/password
+3. Studio pulls profiles, collections (`sync_pull_collections`), and addon catalogs (addon URLs + `/manifest.json`)
+4. Select a widget → **Data source** lists your real collections (`📁`) and catalogs (`🎬`)
+
+Optional defaults: copy `.env.example` → `.env.local`.
 
 ## Scripts
 

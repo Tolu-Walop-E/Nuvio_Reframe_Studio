@@ -1,22 +1,17 @@
-export type DataSourceId =
-  | "none"
-  | "featured"
-  | "continueWatching"
-  | "catalogPopularMovies"
-  | "catalogPopularShows"
-  | "genres"
-  | "collections";
+import type { BlockType } from "./blocks";
+import type { LiveDataSource } from "../nuvio/types";
+
+/** Builtin + live Nuvio account sources (collection:… / catalog:…). */
+export type DataSourceId = string;
 
 export type DataSourceDefinition = {
   id: DataSourceId;
   label: string;
   description: string;
-  /** Which block types may bind this source */
-  allowedBlocks: Array<"hero" | "topNav" | "mediaRail" | "genreRail" | "collectionRail" | "spacer">;
+  allowedBlocks: BlockType[];
 };
 
-/** Known Nuvio data keys only — no arbitrary APIs from the website. */
-export const DATA_SOURCES: DataSourceDefinition[] = [
+export const BUILTIN_DATA_SOURCES: DataSourceDefinition[] = [
   {
     id: "none",
     label: "None",
@@ -37,14 +32,14 @@ export const DATA_SOURCES: DataSourceDefinition[] = [
   },
   {
     id: "catalogPopularMovies",
-    label: "Popular movies",
-    description: "Catalog: movies / popular",
+    label: "Popular movies (demo)",
+    description: "Demo placeholder until account catalogs load",
     allowedBlocks: ["mediaRail", "hero"],
   },
   {
     id: "catalogPopularShows",
-    label: "Popular shows",
-    description: "Catalog: series / popular",
+    label: "Popular shows (demo)",
+    description: "Demo placeholder until account catalogs load",
     allowedBlocks: ["mediaRail", "hero"],
   },
   {
@@ -55,14 +50,30 @@ export const DATA_SOURCES: DataSourceDefinition[] = [
   },
   {
     id: "collections",
-    label: "Collections",
-    description: "User collections rail",
+    label: "Collections (all)",
+    description: "Generic collections rail",
     allowedBlocks: ["collectionRail"],
   },
 ];
 
-export function sourcesForBlock(blockType: string): DataSourceDefinition[] {
-  return DATA_SOURCES.filter((s) =>
-    s.allowedBlocks.includes(blockType as DataSourceDefinition["allowedBlocks"][number]),
-  );
+export function mergeDataSources(live: LiveDataSource[] | null | undefined): DataSourceDefinition[] {
+  if (!live?.length) return BUILTIN_DATA_SOURCES;
+  const byId = new Map<string, DataSourceDefinition>();
+  for (const s of BUILTIN_DATA_SOURCES) byId.set(s.id, s);
+  for (const s of live) {
+    byId.set(s.id, {
+      id: s.id,
+      label: s.label,
+      description: s.description,
+      allowedBlocks: s.allowedBlocks,
+    });
+  }
+  return [...byId.values()];
+}
+
+export function sourcesForBlock(
+  blockType: string,
+  all: DataSourceDefinition[] = BUILTIN_DATA_SOURCES,
+): DataSourceDefinition[] {
+  return all.filter((s) => s.allowedBlocks.includes(blockType as BlockType));
 }

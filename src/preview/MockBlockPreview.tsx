@@ -112,6 +112,11 @@ export function MockBlockPreview({ block, preview }: Props) {
 }
 
 function heroTitle(source: string): string {
+  if (source.startsWith("collection:")) return "Your Collection";
+  if (source.startsWith("catalog:")) {
+    const parts = source.split(":");
+    return parts[parts.length - 1] || "Catalog Premiere";
+  }
   switch (source) {
     case "featured":
       return "Neon Harbor";

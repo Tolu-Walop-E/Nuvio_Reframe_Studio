@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AccountPanel } from "./account/AccountPanel";
 import { BLOCK_CATALOG, blockDef, type BlockType } from "./catalog/blocks";
-import { sourcesForBlock } from "./catalog/dataSources";
+import { mergeDataSources, sourcesForBlock } from "./catalog/dataSources";
 import { DEMO_PACKS, clonePack, parseViewPack } from "./demos";
+import { defaultConfig, loadSession } from "./nuvio/config";
+import { loadNuvioLibrary } from "./nuvio/library";
+import type { NuvioLibrarySnapshot, NuvioSession } from "./nuvio/types";
 import { MockBlockPreview } from "./preview/MockBlockPreview";
 import {
   VIEWPORT_HEIGHT,
@@ -43,8 +47,39 @@ export default function App() {
     x: false,
     y: false,
   });
+  const [session, setSession] = useState<NuvioSession | null>(() => loadSession());
+  const [library, setLibrary] = useState<NuvioLibrarySnapshot | null>(null);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const dataSources = useMemo(
+    () => mergeDataSources(library?.sources),
+    [library?.sources],
+  );
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      setAccountBusy(true);
+      setAccountError(null);
+      try {
+        const snap = await loadNuvioLibrary(defaultConfig(), session, 1);
+        if (!cancelled) setLibrary(snap);
+      } catch (e) {
+        if (!cancelled) {
+          setAccountError(e instanceof Error ? e.message : String(e));
+        }
+      } finally {
+        if (!cancelled) setAccountBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.accessToken]);
 
   const selected = useMemo(
     () => pack.blocks.find((b) => b.id === selectedId) ?? null,
@@ -124,7 +159,7 @@ export default function App() {
       y: Math.max(0, y),
       w: def.defaultW,
       h: def.defaultH,
-      dataSource: sourcesForBlock(type)[0]?.id ?? "none",
+      dataSource: sourcesForBlock(type, dataSources)[0]?.id ?? "none",
       trailer: type === "hero" || type === "mediaRail",
       label: def.label,
       hAlign: "start",
@@ -286,6 +321,17 @@ export default function App() {
 
       <div className="workspace">
         <aside className="rail">
+          <AccountPanel
+            session={session}
+            library={library}
+            busy={accountBusy}
+            error={accountError}
+            onSession={setSession}
+            onLibrary={setLibrary}
+            onBusy={setAccountBusy}
+            onError={setAccountError}
+          />
+
           <h2>Demos</h2>
           <p className="hint">Load a starter layout, then tweak.</p>
           <ul className="demo-list">
@@ -459,9 +505,13 @@ export default function App() {
                     })
                   }
                 >
-                  {sourcesForBlock(selected.type).map((s) => (
+                  {sourcesForBlock(selected.type, dataSources).map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.label}
+                      {s.id.startsWith("collection:")
+                        ? `📁 ${s.label}`
+                        : s.id.startsWith("catalog:")
+                          ? `🎬 ${s.label}`
+                          : s.label}
                     </option>
                   ))}
                 </select>
