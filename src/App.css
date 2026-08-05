@@ -364,6 +364,21 @@ select {
   background: #12151a;
 }
 
+.block-mediaRail,
+.block-genreRail,
+.block-collectionRail {
+  overflow: visible;
+  background: transparent;
+  border-color: transparent;
+}
+
+.block-mediaRail.selected,
+.block-genreRail.selected,
+.block-collectionRail.selected {
+  background: rgba(18, 21, 26, 0.35);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 .block.preview {
   cursor: default;
   border-color: transparent;
@@ -577,16 +592,26 @@ select {
 
 .mock-rail {
   height: 100%;
-  padding: 18px 40px 22px;
+  padding: 12px 40px 18px;
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 14px;
+  place-items: end stretch;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.15), transparent);
+  position: relative;
+  overflow: visible;
 }
 
 .mock-rail-title {
-  font-size: 24px;
+  position: absolute;
+  left: 40px;
+  bottom: 100%;
+  margin-bottom: 8px;
+  font-size: 22px;
   font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+  z-index: 3;
 }
 
 .mock-row {
@@ -594,6 +619,8 @@ select {
   gap: 14px;
   align-items: end;
   overflow: hidden;
+  width: 100%;
+  height: 100%;
 }
 
 .mock-poster {
