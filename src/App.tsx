@@ -15,6 +15,7 @@ import "./App.css";
 
 type DragMode = "move" | "resize";
 type StudioMode = "edit" | "preview";
+type ResizeCorner = "nw" | "ne" | "sw" | "se";
 
 type DragState = {
   mode: DragMode;
@@ -22,6 +23,7 @@ type DragState = {
   startX: number;
   startY: number;
   orig: ViewBlock;
+  corner?: ResizeCorner;
 };
 
 function uid(prefix: string) {
@@ -130,29 +132,45 @@ export default function App() {
         x: Math.round(clamp(drag.orig.x + dx, 0, CANVAS_WIDTH - drag.orig.w)),
         y: Math.round(clamp(drag.orig.y + dy, 0, CANVAS_HEIGHT - drag.orig.h)),
       });
-    } else {
-      updateBlock(drag.blockId, {
-        w: Math.round(clamp(drag.orig.w + dx, def.minW, CANVAS_WIDTH - drag.orig.x)),
-        h: Math.round(clamp(drag.orig.h + dy, def.minH, CANVAS_HEIGHT - drag.orig.y)),
-      });
+      return;
     }
+
+    const corner = drag.corner ?? "se";
+    const next = resizeFromCorner(drag.orig, corner, dx, dy, def.minW, def.minH);
+    updateBlock(drag.blockId, next);
   };
 
   const endDrag = () => {
     dragRef.current = null;
   };
 
-  const startDrag = (dragMode: DragMode, block: ViewBlock, event: React.PointerEvent) => {
+  const startMove = (block: ViewBlock, event: React.PointerEvent) => {
     if (mode !== "edit") return;
     event.stopPropagation();
     event.preventDefault();
     setSelectedId(block.id);
     dragRef.current = {
-      mode: dragMode,
+      mode: "move",
       blockId: block.id,
       startX: event.clientX,
       startY: event.clientY,
       orig: { ...block },
+    };
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  };
+
+  const startResize = (corner: ResizeCorner, block: ViewBlock, event: React.PointerEvent) => {
+    if (mode !== "edit") return;
+    event.stopPropagation();
+    event.preventDefault();
+    setSelectedId(block.id);
+    dragRef.current = {
+      mode: "resize",
+      blockId: block.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      orig: { ...block },
+      corner,
     };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
@@ -321,7 +339,7 @@ export default function App() {
                     width: block.w,
                     height: block.h,
                   }}
-                  onPointerDown={(e) => startDrag("move", block, e)}
+                  onPointerDown={(e) => startMove(block, e)}
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedId(block.id);
@@ -344,12 +362,18 @@ export default function App() {
                     </button>
                   )}
                   {mode === "edit" && selectedId === block.id && (
-                    <button
-                      type="button"
-                      className="resize-handle"
-                      aria-label="Resize"
-                      onPointerDown={(e) => startDrag("resize", block, e)}
-                    />
+                    <div className="resize-corners">
+                      {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
+                        <button
+                          key={corner}
+                          type="button"
+                          className={`resize-corner corner-${corner}`}
+                          aria-label={`Resize ${corner.toUpperCase()}`}
+                          title="Drag corner to resize"
+                          onPointerDown={(e) => startResize(corner, block, e)}
+                        />
+                      ))}
+                    </div>
                   )}
                 </div>
               ))}
@@ -429,4 +453,49 @@ export default function App() {
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
+}
+
+function resizeFromCorner(
+  orig: ViewBlock,
+  corner: ResizeCorner,
+  dx: number,
+  dy: number,
+  minW: number,
+  minH: number,
+): Pick<ViewBlock, "x" | "y" | "w" | "h"> {
+  const right = orig.x + orig.w;
+  const bottom = orig.y + orig.h;
+
+  let left = orig.x;
+  let top = orig.y;
+  let nextRight = right;
+  let nextBottom = bottom;
+
+  if (corner.includes("w")) left = orig.x + dx;
+  if (corner.includes("e")) nextRight = right + dx;
+  if (corner.includes("n")) top = orig.y + dy;
+  if (corner.includes("s")) nextBottom = bottom + dy;
+
+  // Enforce minimum size by anchoring the opposite edge.
+  if (nextRight - left < minW) {
+    if (corner.includes("w")) left = nextRight - minW;
+    else nextRight = left + minW;
+  }
+  if (nextBottom - top < minH) {
+    if (corner.includes("n")) top = nextBottom - minH;
+    else nextBottom = top + minH;
+  }
+
+  // Keep inside the canvas.
+  left = clamp(left, 0, CANVAS_WIDTH - minW);
+  top = clamp(top, 0, CANVAS_HEIGHT - minH);
+  nextRight = clamp(nextRight, left + minW, CANVAS_WIDTH);
+  nextBottom = clamp(nextBottom, top + minH, CANVAS_HEIGHT);
+
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
+    w: Math.round(nextRight - left),
+    h: Math.round(nextBottom - top),
+  };
 }

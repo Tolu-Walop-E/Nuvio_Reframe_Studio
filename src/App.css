@@ -379,18 +379,52 @@ select {
   background: #a31818;
 }
 
-.resize-handle {
+.resize-corners {
   position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 16px;
-  height: 16px;
-  border: 0;
-  border-radius: 3px;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.resize-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #111;
+  border-radius: 4px;
   background: var(--accent);
-  cursor: nwse-resize;
   padding: 0;
-  z-index: 5;
+  pointer-events: auto;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.resize-corner:hover {
+  transform: scale(1.12);
+  filter: brightness(1.08);
+}
+
+.corner-nw {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+
+.corner-ne {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+
+.corner-sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+
+.corner-se {
+  bottom: -7px;
+  right: -7px;
+  cursor: nwse-resize;
 }
 
 .mock {
