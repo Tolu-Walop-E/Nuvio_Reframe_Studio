@@ -1,32 +1,53 @@
-# React + TypeScript + Vite
+# Nuvio Reframe Studio
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Visual **home view** editor for [Nuvio TV](https://github.com/Tolu-Walop-E/Nuvio_Reframe).
 
-Currently, two official plugins are available:
+Drag blocks onto a TV canvas, resize them, and point each slot at a known Nuvio data source. Export a `view.json` pack. Nuvio renders packs with its native Compose components (focus + trailers stay in the app).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Relationship to Nuvio TV
 
-## React Compiler
+| Repo | Role |
+|------|------|
+| [Nuvio_Reframe](https://github.com/Tolu-Walop-E/Nuvio_Reframe) | Android TV app (Compose renderer, data, TrailerPlayer) |
+| **Nuvio_Reframe_Studio** (this repo) | Website to author view packs |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**Zero required changes to Nuvio TV to start designing.**  
+Later, Nuvio can load a pack by one layout id/tag. Until then, packs are design output only.
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Pack format (v0)
 
 ```json
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+  "schemaVersion": 1,
+  "id": "my-home",
+  "name": "My Home",
+  "canvas": { "width": 1920, "height": 1080 },
+  "blocks": [
+    {
+      "id": "hero-1",
+      "type": "hero",
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 620,
+      "dataSource": "featured",
+      "trailer": true
+    }
+  ]
 }
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Allowed block types and data sources live in `src/catalog/`.
+
+## Develop
+
+```bash
+npm install
+npm run dev
+```
+
+## Scripts
+
+- `npm run dev` — local studio
+- `npm run build` — production build
+- `npm run preview` — preview build
