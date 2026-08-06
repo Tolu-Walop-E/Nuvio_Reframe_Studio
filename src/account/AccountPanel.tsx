@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signInWithPassword } from "../nuvio/client";
+import { ensureFreshSession, signInWithPassword } from "../nuvio/client";
 import { defaultConfig, saveConfig, saveSession } from "../nuvio/config";
 import { loadNuvioLibrary } from "../nuvio/library";
 import type { NuvioConfig, NuvioLibrarySnapshot, NuvioSession } from "../nuvio/types";
@@ -60,11 +60,21 @@ export function AccountPanel({
     onError(null);
     onBusy(true);
     try {
-      const snap = await loadNuvioLibrary(config, session, profileId);
+      const fresh = await ensureFreshSession(config, session);
+      if (fresh.accessToken !== session.accessToken) {
+        onSession(fresh);
+      }
+      const snap = await loadNuvioLibrary(config, fresh, profileId);
       onLibrary(snap);
       setProfileId(snap.profileId);
     } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      onError(msg);
+      if (/sign in again|session expired/i.test(msg)) {
+        saveSession(null);
+        onSession(null);
+        onLibrary(null);
+      }
     } finally {
       onBusy(false);
     }
@@ -79,13 +89,17 @@ export function AccountPanel({
 
   const catalogCount = library?.sources.filter((s) => s.kind === "catalog").length ?? 0;
   const collectionCount = library?.sources.filter((s) => s.kind === "collection").length ?? 0;
+  const homeRailCount =
+    library?.homePack.blocks.filter(
+      (b) => b.type === "mediaRail" || b.type === "collectionRail" || b.type === "genreRail",
+    ).length ?? 0;
 
   return (
     <section className="account-panel">
       <h2>Nuvio account</h2>
       <p className="hint">
-        Sign in with the same email/password as the TV app. Studio loads your collections and addon
-        catalogs so widgets can bind to real rails.
+        Sign in with the same email/password as the TV app. Studio rebuilds the canvas from your
+        synced home catalog order (same rails as on TV), plus collections and addon catalogs.
       </p>
 
       <button type="button" className="btn ghost full" onClick={() => setShowKeys((v) => !v)}>
@@ -159,10 +173,20 @@ export function AccountPanel({
                     onError(null);
                     onBusy(true);
                     try {
-                      const snap = await loadNuvioLibrary(config, session, next);
+                      const fresh = await ensureFreshSession(config, session);
+                      if (fresh.accessToken !== session.accessToken) {
+                        onSession(fresh);
+                      }
+                      const snap = await loadNuvioLibrary(config, fresh, next);
                       onLibrary(snap);
                     } catch (err) {
-                      onError(err instanceof Error ? err.message : String(err));
+                      const msg = err instanceof Error ? err.message : String(err);
+                      onError(msg);
+                      if (/sign in again|session expired/i.test(msg)) {
+                        saveSession(null);
+                        onSession(null);
+                        onLibrary(null);
+                      }
                     } finally {
                       onBusy(false);
                     }
@@ -178,12 +202,12 @@ export function AccountPanel({
             </label>
           )}
           <p className="hint">
-            {collectionCount} collections · {catalogCount} catalogs
+            {homeRailCount} home rails · {collectionCount} collections · {catalogCount} catalogs
             {library ? ` · loaded ${new Date(library.loadedAt).toLocaleTimeString()}` : ""}
           </p>
           <div className="rail-section">
             <button type="button" className="btn ghost full" disabled={busy} onClick={() => void refresh()}>
-              {busy ? "Loading…" : "Reload catalogs & collections"}
+              {busy ? "Loading…" : "Reload my Nuvio home"}
             </button>
             <button type="button" className="btn ghost full danger-text" onClick={signOut}>
               Sign out

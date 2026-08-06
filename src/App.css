@@ -29,7 +29,8 @@ html,
 body,
 #root {
   margin: 0;
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -43,9 +44,11 @@ select {
 }
 
 .studio {
+  height: 100%;
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
+  overflow: hidden;
 }
 
 .topbar {
@@ -55,6 +58,7 @@ select {
   padding: 14px 20px;
   border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, #15181c, #101214);
+  z-index: 5;
 }
 
 .brand {
@@ -210,6 +214,18 @@ select {
   font-size: 12px;
 }
 
+.demo-list.saved-views-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.saved-view-delete {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
 .rail-section {
   display: grid;
   gap: 8px;
@@ -267,14 +283,23 @@ select {
   display: grid;
   grid-template-columns: 260px 1fr 280px;
   min-height: 0;
+  height: 100%;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .rail,
 .inspector {
+  position: sticky;
+  top: 0;
   background: var(--panel);
   border-right: 1px solid var(--line);
   padding: 18px 16px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  height: 100%;
+  max-height: 100%;
+  align-self: stretch;
 }
 
 .inspector {
@@ -349,6 +374,9 @@ select {
   display: grid;
   grid-template-rows: 1fr auto;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   background:
     radial-gradient(circle at 20% 0%, #2a2118 0%, transparent 42%),
     linear-gradient(180deg, #0c0e11, #15181d);
@@ -356,14 +384,23 @@ select {
 }
 
 .canvas-shell {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   display: grid;
   place-items: start center;
   min-height: 0;
+  height: 100%;
+}
+
+.canvas-shell.panning {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .canvas {
   position: relative;
+  width: 1920px;
+  max-width: 1920px;
   transform-origin: top center;
   background:
     linear-gradient(180deg, #0a0b0d 0%, #14181f 55%, #0d1014 100%);
@@ -458,6 +495,26 @@ select {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   z-index: 2;
+}
+
+.block.selected.primary {
+  outline: 2px solid #fff;
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.selection-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.selection-list .btn {
+  text-align: left;
+  font-size: 13px;
 }
 
 .canvas.previewing {
@@ -575,6 +632,8 @@ select {
 .mock-hero {
   height: 100%;
   overflow: hidden;
+  position: relative;
+  background-color: #0b0d12;
 }
 
 .mock-hero-art {
@@ -697,6 +756,14 @@ select {
   justify-content: flex-start;
 }
 
+.mock-hero-logo {
+  max-height: 96px;
+  max-width: min(420px, 55%);
+  object-fit: contain;
+  margin: 6px 0 10px;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
+}
+
 .mock-poster {
   flex: 0 0 auto;
   border-radius: 10px;
@@ -716,7 +783,7 @@ select {
 }
 
 .mock-poster.focused.grows {
-  transform: translateY(-10px) scale(1.18);
+  transform: translateY(-8%) scale(1.14);
   z-index: 2;
 }
 
@@ -807,6 +874,18 @@ select {
   font-size: 13px;
 }
 
+.pack-rotate {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.pack-rotate h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .geometry {
   display: flex;
   justify-content: space-between;
@@ -816,13 +895,42 @@ select {
 }
 
 @media (max-width: 1100px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: auto;
+  }
+
+  .studio {
+    height: auto;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+
   .workspace {
     grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
   }
 
   .rail,
   .inspector {
+    position: relative;
+    height: auto;
+    max-height: none;
     border: 0;
     border-bottom: 1px solid var(--line);
+  }
+
+  .stage {
+    height: auto;
+    overflow: visible;
+  }
+
+  .canvas-shell {
+    height: auto;
+    overflow: visible;
   }
 }

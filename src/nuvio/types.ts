@@ -30,5 +30,13 @@ export type NuvioLibrarySnapshot = {
   profileId: number;
   profiles: NuvioProfile[];
   sources: LiveDataSource[];
+  /** Pack mirroring this account’s Nuvio home rail order. */
+  homePack: import("../types/viewPack").ViewPack;
+  /** Real posters/tiles keyed by dataSource id. */
+  previewBoard: import("./previewBoard").PreviewBoard;
+  /** Raw collection folders for expand-into-rails. */
+  collections: import("./previewBoard").CollectionFolderPreview[];
+  /** Catalog display names keyed by catalogId / type:catalogId. */
+  catalogNames: Record<string, string>;
   loadedAt: number;
 };

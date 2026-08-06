@@ -17,6 +17,11 @@ export type ViewBlock = {
   contentAlign?: "start" | "center";
   /** Vertical/portrait poster focus-grow (media rails). Default true. */
   posterGrow?: boolean;
+  /**
+   * When true, this block keeps its vertical slot during unlock rotation.
+   * Omitted = default lock for topNav / hero / continueWatching.
+   */
+  locked?: boolean;
 };
 
 export type ViewPack = {
@@ -25,6 +30,14 @@ export type ViewPack = {
   name: string;
   canvas: { width: number; height: number };
   blocks: ViewBlock[];
+  /** When true, unlocked rails permute on an interval (order-only). */
+  rotateUnlocked?: boolean;
+  /** Hours between reshuffles; minimum 12. */
+  rotateIntervalHours?: number;
+  /** Epoch ms of last shuffle — written by Studio preview / TV runtime. */
+  lastShuffleAt?: number;
+  /** Seed for deterministic unlock order until the next interval. */
+  shuffleSeed?: string;
 };
 
 /** First TV viewport guide — Nuvio scrolls beyond this. */
@@ -36,7 +49,6 @@ export const CANVAS_WIDTH = VIEWPORT_WIDTH;
 export const CANVAS_HEIGHT = VIEWPORT_HEIGHT;
 
 const GROW_PAD = 120;
-const MIN_CANVAS_WIDTH = VIEWPORT_WIDTH;
 const MIN_CANVAS_HEIGHT = VIEWPORT_HEIGHT;
 
 export function contentBounds(blocks: ViewBlock[]): {
@@ -55,14 +67,14 @@ export function contentBounds(blocks: ViewBlock[]): {
   return { right, bottom };
 }
 
-/** Canvas grows with rails/collections placed below or past the first screen. */
+/** Canvas grows with rails placed below the first screen — width stays TV-locked at 1920. */
 export function computeCanvasSize(blocks: ViewBlock[]): {
   width: number;
   height: number;
 } {
-  const { right, bottom } = contentBounds(blocks);
+  const { bottom } = contentBounds(blocks);
   return {
-    width: Math.max(MIN_CANVAS_WIDTH, Math.ceil(right + GROW_PAD)),
+    width: VIEWPORT_WIDTH,
     height: Math.max(MIN_CANVAS_HEIGHT, Math.ceil(bottom + GROW_PAD)),
   };
 }
@@ -72,6 +84,44 @@ export function withComputedCanvas(pack: ViewPack): ViewPack {
     ...pack,
     canvas: computeCanvasSize(pack.blocks),
   };
+}
+
+/** Keep block inside the 1920 TV frame (clip / clamp horizontal overflow). */
+export function clampBlockToViewport(block: ViewBlock): ViewBlock {
+  let x = Math.max(0, block.x);
+  if (x >= VIEWPORT_WIDTH) x = 0;
+  let w = Math.min(block.w, VIEWPORT_WIDTH - x);
+  if (w < 1) {
+    x = 0;
+    w = VIEWPORT_WIDTH;
+  }
+  return { ...block, x: Math.round(x), w: Math.round(w) };
+}
+
+/**
+ * Walk top→bottom and push overlapping blocks down so a consistent gap is kept.
+ * Used after move/resize so scaled groups never stack on top of each other.
+ */
+export function restackVertically(blocks: ViewBlock[], gap = 44): ViewBlock[] {
+  const next = blocks.map((b) => clampBlockToViewport({ ...b }));
+  const sorted = [...next].sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+
+  for (let i = 1; i < sorted.length; i++) {
+    const cur = sorted[i];
+    let minY = cur.y;
+    for (let j = 0; j < i; j++) {
+      const prev = sorted[j];
+      const overlapsX = cur.x < prev.x + prev.w && cur.x + cur.w > prev.x;
+      if (!overlapsX) continue;
+      minY = Math.max(minY, prev.y + prev.h + gap);
+    }
+    if (minY !== cur.y) {
+      cur.y = Math.round(minY);
+    }
+  }
+
+  const byId = new Map(sorted.map((b) => [b.id, b]));
+  return next.map((b) => byId.get(b.id) ?? b);
 }
 
 export function createEmptyPack(name = "Untitled home"): ViewPack {
@@ -127,11 +177,20 @@ export function snapBlockPosition(
   y: number,
   w: number,
   h: number,
-  opts?: { threshold?: number; guideWidth?: number; guideHeight?: number },
+  opts?: {
+    threshold?: number;
+    guideWidth?: number;
+    guideHeight?: number;
+    /** Other blocks to snap above/below (no overlap). */
+    others?: Array<{ id: string; x: number; y: number; w: number; h: number }>;
+    excludeId?: string;
+    gap?: number;
+  },
 ): { x: number; y: number; snappedX: boolean; snappedY: boolean } {
   const threshold = opts?.threshold ?? 28;
   const guideWidth = opts?.guideWidth ?? VIEWPORT_WIDTH;
   const guideHeight = opts?.guideHeight ?? VIEWPORT_HEIGHT;
+  const gap = opts?.gap ?? 44;
   const centerX = (guideWidth - w) / 2;
   const centerY = (guideHeight - h) / 2;
   let nextX = Math.max(0, x);
@@ -155,7 +214,59 @@ export function snapBlockPosition(
     snappedY = true;
   }
 
+  const others = (opts?.others ?? []).filter((b) => b.id !== opts?.excludeId);
+  for (const other of others) {
+    // Snap left edges / right edges for aligned columns.
+    if (Math.abs(nextX - other.x) <= threshold) {
+      nextX = other.x;
+      snappedX = true;
+    }
+
+    const aboveY = other.y - h - gap;
+    const belowY = other.y + other.h + gap;
+    if (aboveY >= 0 && Math.abs(nextY - aboveY) <= threshold) {
+      nextY = Math.round(aboveY);
+      snappedY = true;
+    } else if (Math.abs(nextY - belowY) <= threshold) {
+      nextY = Math.round(Math.max(0, belowY));
+      snappedY = true;
+    }
+  }
+
   return { x: Math.round(nextX), y: Math.round(nextY), snappedX, snappedY };
+}
+
+/** Push a block out of vertical overlap with others (prefers below when tied). */
+export function resolveVerticalOverlap(
+  moving: { id: string; x: number; y: number; w: number; h: number },
+  others: Array<{ id: string; x: number; y: number; w: number; h: number }>,
+  gap = 44,
+): number {
+  let y = moving.y;
+  const sorted = [...others]
+    .filter((b) => b.id !== moving.id)
+    .sort((a, b) => a.y - b.y);
+
+  for (let pass = 0; pass < sorted.length + 1; pass++) {
+    let hit = false;
+    for (const other of sorted) {
+      const overlapsX =
+        moving.x < other.x + other.w && moving.x + moving.w > other.x;
+      if (!overlapsX) continue;
+      const top = y;
+      const bottom = y + moving.h;
+      const oTop = other.y;
+      const oBottom = other.y + other.h;
+      const overlapsY = top < oBottom + gap && bottom + gap > oTop;
+      if (!overlapsY) continue;
+      hit = true;
+      const mid = (top + bottom) / 2;
+      const otherMid = (oTop + oBottom) / 2;
+      y = mid >= otherMid ? oBottom + gap : Math.max(0, oTop - moving.h - gap);
+    }
+    if (!hit) break;
+  }
+  return Math.round(Math.max(0, y));
 }
 
 export function slugify(value: string): string {

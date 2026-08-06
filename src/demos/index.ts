@@ -235,6 +235,10 @@ export function parseViewPack(raw: unknown): ViewPack {
   const obj = raw as Partial<ViewPack>;
   if (obj.schemaVersion !== 1) throw new Error("Unsupported schemaVersion");
   if (!Array.isArray(obj.blocks)) throw new Error("Pack missing blocks[]");
+  const rotateIntervalHours =
+    typeof obj.rotateIntervalHours === "number" && Number.isFinite(obj.rotateIntervalHours)
+      ? Math.max(12, Math.round(obj.rotateIntervalHours))
+      : undefined;
   return withComputedCanvas({
     schemaVersion: 1,
     id: String(obj.id ?? "imported"),
@@ -244,5 +248,15 @@ export function parseViewPack(raw: unknown): ViewPack {
       height: VIEWPORT_HEIGHT,
     },
     blocks: obj.blocks as ViewBlock[],
+    rotateUnlocked: obj.rotateUnlocked === true,
+    rotateIntervalHours,
+    lastShuffleAt:
+      typeof obj.lastShuffleAt === "number" && Number.isFinite(obj.lastShuffleAt)
+        ? obj.lastShuffleAt
+        : undefined,
+    shuffleSeed:
+      typeof obj.shuffleSeed === "string" && obj.shuffleSeed.trim()
+        ? obj.shuffleSeed.trim()
+        : undefined,
   });
 }

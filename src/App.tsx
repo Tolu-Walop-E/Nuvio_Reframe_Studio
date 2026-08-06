@@ -3,7 +3,8 @@ import { AccountPanel } from "./account/AccountPanel";
 import { BLOCK_CATALOG, blockDef, type BlockType } from "./catalog/blocks";
 import { mergeDataSources, sourcesForBlock } from "./catalog/dataSources";
 import { DEMO_PACKS, clonePack, parseViewPack } from "./demos";
-import { defaultConfig, loadSession } from "./nuvio/config";
+import { defaultConfig, loadSession, saveSession } from "./nuvio/config";
+import { ensureFreshSession } from "./nuvio/client";
 import { loadNuvioLibrary } from "./nuvio/library";
 import type { NuvioLibrarySnapshot, NuvioSession } from "./nuvio/types";
 import { MockBlockPreview } from "./preview/MockBlockPreview";
@@ -13,15 +14,30 @@ import {
   centerBlockX,
   computeCanvasSize,
   createEmptyPack,
+  resolveVerticalOverlap,
+  restackVertically,
   slugify,
   snapBlockPosition,
   withComputedCanvas,
   type ViewBlock,
   type ViewPack,
 } from "./types/viewPack";
+import { expandCollectionIntoContentRails, expandFolderIntoCatalogRails, parseFolderDataSource } from "./views/expandCollection";
+import {
+  deleteSavedView,
+  listSavedViews,
+  loadSavedView,
+  saveView,
+  type SavedView,
+} from "./views/savedViews";
+import {
+  MIN_ROTATE_INTERVAL_HOURS,
+  applyUnlockedRotation,
+  normalizeRotateIntervalHours,
+} from "./views/shuffleUnlocked";
 import "./App.css";
 
-type DragMode = "move" | "resize";
+type DragMode = "move" | "resize" | "pan";
 type StudioMode = "edit" | "preview";
 type ResizeCorner = "nw" | "ne" | "sw" | "se";
 
@@ -31,8 +47,15 @@ type DragState = {
   startX: number;
   startY: number;
   orig: ViewBlock;
+  /** Snapshot of every selected block when a multi-move/resize starts. */
+  origGroup?: ViewBlock[];
   corner?: ResizeCorner;
+  /** Middle-mouse pan scroll snapshot. */
+  panScrollLeft?: number;
+  panScrollTop?: number;
 };
+
+const RAIL_GAP = 44;
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -40,7 +63,7 @@ function uid(prefix: string) {
 
 export default function App() {
   const [pack, setPack] = useState<ViewPack>(() => clonePack(DEMO_PACKS[1].pack));
-  const [selectedId, setSelectedId] = useState<string | null>("hero");
+  const [selectedIds, setSelectedIds] = useState<string[]>(["hero"]);
   const [scale, setScale] = useState(0.42);
   const [mode, setMode] = useState<StudioMode>("preview");
   const [snapGuides, setSnapGuides] = useState<{ x: boolean; y: boolean }>({
@@ -51,13 +74,38 @@ export default function App() {
   const [library, setLibrary] = useState<NuvioLibrarySnapshot | null>(null);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [savedViews, setSavedViews] = useState<SavedView[]>(() => listSavedViews());
   const dragRef = useRef<DragState | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const lastClickedIdRef = useRef<string | null>("hero");
 
   const dataSources = useMemo(
     () => mergeDataSources(library?.sources),
     [library?.sources],
   );
+
+  const selectedId = selectedIds[selectedIds.length - 1] ?? null;
+  const multiSelect = selectedIds.length > 1;
+
+  const applyHomePack = useCallback((snap: NuvioLibrarySnapshot) => {
+    setPack((prev) =>
+      withComputedCanvas({
+        ...clonePack(snap.homePack),
+        rotateUnlocked: prev.rotateUnlocked,
+        rotateIntervalHours: prev.rotateIntervalHours ?? MIN_ROTATE_INTERVAL_HOURS,
+        // Fresh home layout — clear shuffle memory so next rotate is due.
+        lastShuffleAt: undefined,
+        shuffleSeed: undefined,
+      }),
+    );
+    const nextBlocks = snap.homePack.blocks;
+    const pick = nextBlocks.find((b) => b.type === "hero")?.id ?? nextBlocks[0]?.id ?? null;
+    setSelectedIds(pick ? [pick] : []);
+    lastClickedIdRef.current = pick;
+    setMode("preview");
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -66,11 +114,24 @@ export default function App() {
       setAccountBusy(true);
       setAccountError(null);
       try {
-        const snap = await loadNuvioLibrary(defaultConfig(), session, 1);
-        if (!cancelled) setLibrary(snap);
+        const fresh = await ensureFreshSession(defaultConfig(), session);
+        if (cancelled) return;
+        if (fresh.accessToken !== session.accessToken) {
+          saveSession(fresh);
+          setSession(fresh);
+        }
+        const snap = await loadNuvioLibrary(defaultConfig(), fresh, 1);
+        if (cancelled) return;
+        setLibrary(snap);
+        applyHomePack(snap);
       } catch (e) {
-        if (!cancelled) {
-          setAccountError(e instanceof Error ? e.message : String(e));
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setAccountError(msg);
+        if (/sign in again|session expired|jwt/i.test(msg)) {
+          saveSession(null);
+          setSession(null);
+          setLibrary(null);
         }
       } finally {
         if (!cancelled) setAccountBusy(false);
@@ -79,14 +140,26 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [session?.accessToken]);
+    // Intentionally only when access token identity changes / first mount with session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.accessToken, applyHomePack]);
 
   const selected = useMemo(
     () => pack.blocks.find((b) => b.id === selectedId) ?? null,
     [pack.blocks, selectedId],
   );
 
+  const selectedBlocks = useMemo(
+    () => pack.blocks.filter((b) => selectedIds.includes(b.id)),
+    [pack.blocks, selectedIds],
+  );
+
   const canvasSize = useMemo(() => computeCanvasSize(pack.blocks), [pack.blocks]);
+
+  const selectOnly = useCallback((id: string | null) => {
+    setSelectedIds(id ? [id] : []);
+    lastClickedIdRef.current = id;
+  }, []);
 
   const updateBlock = useCallback((id: string, patch: Partial<ViewBlock>) => {
     setPack((prev) =>
@@ -97,20 +170,39 @@ export default function App() {
     );
   }, []);
 
-  const deleteBlock = useCallback((id: string) => {
+  const updateBlocks = useCallback((ids: string[], patch: Partial<ViewBlock>) => {
+    const idSet = new Set(ids);
     setPack((prev) =>
       withComputedCanvas({
         ...prev,
-        blocks: prev.blocks.filter((b) => b.id !== id),
+        blocks: prev.blocks.map((b) => (idSet.has(b.id) ? { ...b, ...patch } : b)),
       }),
     );
-    setSelectedId((cur) => (cur === id ? null : cur));
   }, []);
+
+  const deleteBlocks = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    const idSet = new Set(ids);
+    setPack((prev) =>
+      withComputedCanvas({
+        ...prev,
+        blocks: prev.blocks.filter((b) => !idSet.has(b.id)),
+      }),
+    );
+    setSelectedIds((cur) => cur.filter((id) => !idSet.has(id)));
+  }, []);
+
+  const deleteBlock = useCallback(
+    (id: string) => {
+      deleteBlocks([id]);
+    },
+    [deleteBlocks],
+  );
 
   const clearAll = () => {
     if (!window.confirm("Delete every block on this canvas?")) return;
     setPack((prev) => withComputedCanvas({ ...prev, blocks: [] }));
-    setSelectedId(null);
+    selectOnly(null);
   };
 
   const loadDemo = (demoId: string) => {
@@ -118,7 +210,7 @@ export default function App() {
     if (!demo) return;
     const next = withComputedCanvas(clonePack(demo.pack));
     setPack(next);
-    setSelectedId(next.blocks[0]?.id ?? null);
+    selectOnly(next.blocks[0]?.id ?? null);
     setMode("preview");
   };
 
@@ -127,12 +219,45 @@ export default function App() {
       const text = await file.text();
       const next = withComputedCanvas(parseViewPack(JSON.parse(text)));
       setPack(next);
-      setSelectedId(next.blocks[0]?.id ?? null);
+      selectOnly(next.blocks[0]?.id ?? null);
       setMode("preview");
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Failed to import pack");
     }
   };
+
+  const selectBlock = useCallback(
+    (blockId: string, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => {
+      const ordered = [...pack.blocks].sort((a, b) => a.y - b.y || a.x - b.x);
+      const ids = ordered.map((b) => b.id);
+
+      if (event.shiftKey && lastClickedIdRef.current) {
+        const a = ids.indexOf(lastClickedIdRef.current);
+        const b = ids.indexOf(blockId);
+        if (a >= 0 && b >= 0) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          setSelectedIds(ids.slice(lo, hi + 1));
+          return;
+        }
+      }
+
+      if (event.metaKey || event.ctrlKey) {
+        setSelectedIds((cur) => {
+          if (cur.includes(blockId)) {
+            const next = cur.filter((id) => id !== blockId);
+            lastClickedIdRef.current = next[next.length - 1] ?? null;
+            return next;
+          }
+          lastClickedIdRef.current = blockId;
+          return [...cur, blockId];
+        });
+        return;
+      }
+
+      selectOnly(blockId);
+    },
+    [pack.blocks, selectOnly],
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -141,13 +266,13 @@ export default function App() {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
         return;
       }
-      if (!selectedId) return;
+      if (!selectedIds.length) return;
       event.preventDefault();
-      deleteBlock(selectedId);
+      deleteBlocks(selectedIds);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [deleteBlock, selectedId]);
+  }, [deleteBlocks, selectedIds]);
 
   const addBlock = (type: BlockType) => {
     const def = blockDef(type);
@@ -167,64 +292,215 @@ export default function App() {
       posterGrow: type === "mediaRail",
     };
     setPack((prev) => withComputedCanvas({ ...prev, blocks: [...prev.blocks, block] }));
-    setSelectedId(block.id);
+    selectOnly(block.id);
     setMode("edit");
   };
 
   const centerSelected = () => {
-    if (!selected) return;
-    updateBlock(selected.id, {
-      x: centerBlockX(selected, VIEWPORT_WIDTH),
-      hAlign: "center",
-    });
+    if (!selectedBlocks.length) return;
+    setPack((prev) =>
+      withComputedCanvas({
+        ...prev,
+        blocks: prev.blocks.map((b) =>
+          selectedIds.includes(b.id)
+            ? { ...b, x: centerBlockX(b, VIEWPORT_WIDTH), hAlign: "center" as const }
+            : b,
+        ),
+      }),
+    );
   };
 
   const onPointerMove = (event: React.PointerEvent) => {
-    if (mode !== "edit") return;
     const drag = dragRef.current;
     if (!drag) return;
+
+    if (drag.mode === "pan") {
+      const shell = shellRef.current;
+      if (!shell) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      shell.scrollLeft = (drag.panScrollLeft ?? 0) - dx;
+      shell.scrollTop = (drag.panScrollTop ?? 0) - dy;
+      return;
+    }
+
+    if (mode !== "edit") return;
     const dx = (event.clientX - drag.startX) / scale;
     const dy = (event.clientY - drag.startY) / scale;
     const def = blockDef(drag.orig.type);
 
     if (drag.mode === "move") {
-      const snapped = snapBlockPosition(
-        drag.orig.x + dx,
-        drag.orig.y + dy,
-        drag.orig.w,
-        drag.orig.h,
-      );
-      setSnapGuides({ x: snapped.snappedX, y: snapped.snappedY });
-      updateBlock(drag.blockId, {
-        x: snapped.x,
-        y: snapped.y,
-        hAlign: snapped.snappedX && snapped.x === centerBlockX(drag.orig) ? "center" : "start",
+      const group = drag.origGroup?.length ? drag.origGroup : [drag.orig];
+      const movingIds = new Set(group.map((b) => b.id));
+      const primary = group.find((b) => b.id === drag.blockId) ?? drag.orig;
+      const snapped = snapBlockPosition(primary.x + dx, primary.y + dy, primary.w, primary.h, {
+        others: pack.blocks.filter((b) => !movingIds.has(b.id)),
+        excludeId: drag.blockId,
+        gap: RAIL_GAP,
       });
+      const appliedDx = snapped.x - primary.x;
+      const appliedDy = snapped.y - primary.y;
+      setSnapGuides({ x: snapped.snappedX, y: snapped.snappedY });
+      setPack((prev) =>
+        withComputedCanvas({
+          ...prev,
+          blocks: prev.blocks.map((b) => {
+            const origin = group.find((g) => g.id === b.id);
+            if (!origin) return b;
+            const x = Math.max(0, Math.min(VIEWPORT_WIDTH - origin.w, Math.round(origin.x + appliedDx)));
+            return {
+              ...b,
+              x,
+              y: Math.max(0, Math.round(origin.y + appliedDy)),
+              w: Math.min(origin.w, VIEWPORT_WIDTH - x),
+              hAlign:
+                b.id === drag.blockId &&
+                snapped.snappedX &&
+                snapped.x === centerBlockX(primary)
+                  ? ("center" as const)
+                  : b.hAlign,
+            };
+          }),
+        }),
+      );
       return;
     }
 
     setSnapGuides({ x: false, y: false });
     const corner = drag.corner ?? "se";
-    const next = resizeFromCorner(drag.orig, corner, dx, dy, def.minW, def.minH);
-    updateBlock(drag.blockId, next);
+    const group = drag.origGroup?.length ? drag.origGroup : [drag.orig];
+    const primaryNext = resizeFromCorner(drag.orig, corner, dx, dy, def.minW, def.minH);
+    let dw = primaryNext.w - drag.orig.w;
+    let dh = primaryNext.h - drag.orig.h;
+
+    // Keep every selected block at/above its min size with the same delta.
+    for (const origin of group) {
+      const mins = blockDef(origin.type);
+      if (origin.w + dw < mins.minW) dw = mins.minW - origin.w;
+      if (origin.h + dh < mins.minH) dh = mins.minH - origin.h;
+      // Never grow past the locked 1920 TV width.
+      const maxW = VIEWPORT_WIDTH - Math.max(0, origin.x);
+      if (origin.w + dw > maxW) dw = maxW - origin.w;
+    }
+
+    setPack((prev) =>
+      withComputedCanvas({
+        ...prev,
+        blocks: restackVertically(
+          prev.blocks.map((b) => {
+            const origin = group.find((g) => g.id === b.id);
+            if (!origin) return b;
+            return { ...b, ...applyResizeDelta(origin, corner, dw, dh) };
+          }),
+          RAIL_GAP,
+        ),
+      }),
+    );
   };
 
   const endDrag = () => {
+    const drag = dragRef.current;
+    const wasPan = drag?.mode === "pan";
     dragRef.current = null;
     setSnapGuides({ x: false, y: false });
+    if (wasPan) {
+      setIsPanning(false);
+      return;
+    }
+    if (!drag) return;
+
+    setPack((prev) => {
+      let blocks = restackVertically(prev.blocks, RAIL_GAP);
+      if (drag.mode === "move") {
+        const movingIds = new Set(
+          (drag.origGroup?.length ? drag.origGroup : [drag.orig]).map((b) => b.id),
+        );
+        const movers = blocks.filter((b) => movingIds.has(b.id)).sort((a, b) => a.y - b.y);
+        for (const moving of movers) {
+          const y = resolveVerticalOverlap(
+            moving,
+            blocks.filter((b) => b.id !== moving.id),
+            RAIL_GAP,
+          );
+          if (y !== moving.y) {
+            blocks = blocks.map((b) => (b.id === moving.id ? { ...b, y } : b));
+          }
+        }
+        blocks = restackVertically(blocks, RAIL_GAP);
+      }
+      return withComputedCanvas({ ...prev, blocks });
+    });
+  };
+
+  const startPan = (event: React.PointerEvent) => {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const shell = shellRef.current;
+    if (!shell) return;
+    setIsPanning(true);
+    dragRef.current = {
+      mode: "pan",
+      blockId: "",
+      startX: event.clientX,
+      startY: event.clientY,
+      orig: pack.blocks[0] ?? {
+        id: "",
+        type: "spacer",
+        x: 0,
+        y: 0,
+        w: 0,
+        h: 0,
+        dataSource: "none",
+        trailer: false,
+      },
+      panScrollLeft: shell.scrollLeft,
+      panScrollTop: shell.scrollTop,
+    };
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
 
   const startMove = (block: ViewBlock, event: React.PointerEvent) => {
     if (mode !== "edit") return;
     event.stopPropagation();
     event.preventDefault();
-    setSelectedId(block.id);
+
+    // Compute selection before async setState so the drag group matches the click.
+    let groupIds: string[];
+    const ordered = [...pack.blocks].sort((a, b) => a.y - b.y || a.x - b.x);
+    const orderedIds = ordered.map((b) => b.id);
+
+    if (event.shiftKey && lastClickedIdRef.current) {
+      const a = orderedIds.indexOf(lastClickedIdRef.current);
+      const b = orderedIds.indexOf(block.id);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        groupIds = orderedIds.slice(lo, hi + 1);
+      } else {
+        groupIds = [block.id];
+      }
+    } else if (event.metaKey || event.ctrlKey) {
+      groupIds = selectedIds.includes(block.id)
+        ? selectedIds.filter((id) => id !== block.id)
+        : [...selectedIds, block.id];
+      if (!groupIds.length) groupIds = [block.id];
+    } else if (selectedIds.includes(block.id) && selectedIds.length > 1) {
+      // Drag the whole multi-selection.
+      groupIds = selectedIds;
+    } else {
+      groupIds = [block.id];
+    }
+
+    selectBlock(block.id, event);
+
+    const origGroup = pack.blocks.filter((b) => groupIds.includes(b.id)).map((b) => ({ ...b }));
     dragRef.current = {
       mode: "move",
       blockId: block.id,
       startX: event.clientX,
       startY: event.clientY,
       orig: { ...block },
+      origGroup: origGroup.length ? origGroup : [{ ...block }],
     };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
@@ -233,13 +509,29 @@ export default function App() {
     if (mode !== "edit") return;
     event.stopPropagation();
     event.preventDefault();
-    setSelectedId(block.id);
+
+    // Keep the multi-selection; resize applies the same size delta to every selected row.
+    const groupIds =
+      selectedIds.includes(block.id) && selectedIds.length > 1 ? selectedIds : [block.id];
+    if (!selectedIds.includes(block.id)) {
+      selectOnly(block.id);
+    } else {
+      // Ensure primary is the resized block without dropping others.
+      setSelectedIds((cur) => {
+        const rest = cur.filter((id) => id !== block.id);
+        return [...rest, block.id];
+      });
+      lastClickedIdRef.current = block.id;
+    }
+
+    const origGroup = pack.blocks.filter((b) => groupIds.includes(b.id)).map((b) => ({ ...b }));
     dragRef.current = {
       mode: "resize",
       blockId: block.id,
       startX: event.clientX,
       startY: event.clientY,
       orig: { ...block },
+      origGroup: origGroup.length ? origGroup : [{ ...block }],
       corner,
     };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -260,6 +552,81 @@ export default function App() {
     a.download = `${payload.id}.view.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const saveCurrentView = () => {
+    const name =
+      window.prompt("Name this view", pack.name || "My view")?.trim() || pack.name;
+    const saved = saveView(pack, name);
+    setSavedViews(listSavedViews());
+    setPack(saved.pack);
+    window.alert(`Saved “${saved.name}” in this browser.`);
+  };
+
+  const openSavedView = (id: string) => {
+    const saved = loadSavedView(id);
+    if (!saved) return;
+    const next = withComputedCanvas(clonePack(saved.pack));
+    setPack(next);
+    selectOnly(next.blocks[0]?.id ?? null);
+    setMode("preview");
+  };
+
+  const removeSavedView = (id: string) => {
+    const saved = loadSavedView(id);
+    if (!saved) return;
+    if (!window.confirm(`Delete saved view “${saved.name}”?`)) return;
+    deleteSavedView(id);
+    setSavedViews(listSavedViews());
+  };
+
+  const reshufflePreview = () => {
+    if (!pack.rotateUnlocked) {
+      window.alert("Turn on “Randomize unlocked rails” first.");
+      return;
+    }
+    const { pack: next } = applyUnlockedRotation(pack, Date.now(), { force: true });
+    setPack(next);
+  };
+
+  const expandSelectedCollection = () => {
+    if (!selected) return;
+    if (!library?.collections?.length) {
+      window.alert("Sign in and reload your library so collection content is available.");
+      return;
+    }
+
+    // Step 2: expanded folder → one rail per catalog source
+    if (parseFolderDataSource(selected.dataSource)) {
+      const next = expandFolderIntoCatalogRails(
+        pack,
+        selected.id,
+        library.collections,
+        library.catalogNames ?? {},
+      );
+      if (!next) {
+        window.alert("No catalog sources found in this folder to expand.");
+        return;
+      }
+      setPack(next);
+      selectOnly(next.blocks.find((b) => b.dataSource.startsWith("catalog:"))?.id ?? null);
+      setMode("edit");
+      return;
+    }
+
+    // Step 1: collection covers → one rail per folder (title posters)
+    if (selected.type !== "collectionRail") return;
+    if (!selected.dataSource.startsWith("collection:")) return;
+
+    const next = expandCollectionIntoContentRails(pack, selected.id, library.collections);
+    if (!next) {
+      window.alert("No folders with content found in this collection.");
+      return;
+    }
+    setPack(next);
+    const first = next.blocks.find((b) => parseFolderDataSource(b.dataSource));
+    selectOnly(first?.id ?? null);
+    setMode("edit");
   };
 
   return (
@@ -310,8 +677,16 @@ export default function App() {
               onChange={(e) => setScale(Number(e.target.value))}
             />
           </label>
-          <button type="button" className="btn ghost" onClick={() => selectedId && deleteBlock(selectedId)} disabled={!selectedId}>
-            Delete
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => selectedIds.length && deleteBlocks(selectedIds)}
+            disabled={!selectedIds.length}
+          >
+            Delete{selectedIds.length > 1 ? ` (${selectedIds.length})` : ""}
+          </button>
+          <button type="button" className="btn ghost" onClick={saveCurrentView}>
+            Save view
           </button>
           <button type="button" className="btn primary" onClick={exportPack}>
             Export view.json
@@ -327,13 +702,44 @@ export default function App() {
             busy={accountBusy}
             error={accountError}
             onSession={setSession}
-            onLibrary={setLibrary}
+            onLibrary={(snap) => {
+              setLibrary(snap);
+              if (snap) applyHomePack(snap);
+            }}
             onBusy={setAccountBusy}
             onError={setAccountError}
           />
 
+          <h2>Saved views</h2>
+          <p className="hint">Stored in this browser. Save the canvas, then reload anytime.</p>
+          <ul className="demo-list saved-views-list">
+            {savedViews.length === 0 && (
+              <li>
+                <span className="hint">No saved views yet.</span>
+              </li>
+            )}
+            {savedViews.map((view) => (
+              <li key={view.id}>
+                <button type="button" onClick={() => openSavedView(view.id)}>
+                  <strong>{view.name}</strong>
+                  <span>{new Date(view.updatedAt).toLocaleString()}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost danger-text saved-view-delete"
+                  onClick={() => removeSavedView(view.id)}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+
           <h2>Demos</h2>
-          <p className="hint">Load a starter layout, then tweak.</p>
+          <p className="hint">
+            After sign-in the canvas mirrors your Nuvio home rail order. Demos below are starters
+            only.
+          </p>
           <ul className="demo-list">
             {DEMO_PACKS.map((demo) => (
               <li key={demo.id}>
@@ -365,7 +771,7 @@ export default function App() {
               className="btn ghost full"
               onClick={() => {
                 setPack(createEmptyPack("Blank home"));
-                setSelectedId(null);
+                selectOnly(null);
                 setMode("edit");
               }}
             >
@@ -374,7 +780,10 @@ export default function App() {
           </div>
 
           <h2>Blocks</h2>
-          <p className="hint">Add a Nuvio TV building block.</p>
+          <p className="hint">
+            Add a Nuvio TV building block. Ctrl/Cmd+click toggles multi-select; Shift+click selects a
+            range.
+          </p>
           <ul className="block-list">
             {BLOCK_CATALOG.map((b) => (
               <li key={b.type}>
@@ -389,17 +798,26 @@ export default function App() {
             <a href="https://github.com/Tolu-Walop-E/Nuvio_Reframe" target="_blank" rel="noreferrer">
               Nuvio TV repo
             </a>
-            <span>Delete: toolbar, block ×, or Del/Backspace.</span>
+            <span>
+              Multi-select: Ctrl/Cmd+click · Shift+click range · middle-mouse pans · Del deletes
+              selected.
+            </span>
           </div>
         </aside>
 
         <main className="stage">
           <div
-            className={`canvas-shell mode-${mode}`}
+            ref={shellRef}
+            className={`canvas-shell mode-${mode}${isPanning ? " panning" : ""}`}
+            onPointerDown={startPan}
             onPointerMove={onPointerMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
-            onClick={() => setSelectedId(null)}
+            onAuxClick={(e) => {
+              // Prevent middle-click autoscroll chrome / default.
+              if (e.button === 1) e.preventDefault();
+            }}
+            onClick={() => selectOnly(null)}
           >
             <div
               className={`canvas${mode === "preview" ? " previewing" : ""}`}
@@ -417,23 +835,33 @@ export default function App() {
                 {snapGuides.x && <div className="snap-guide vertical" />}
                 {snapGuides.y && <div className="snap-guide horizontal" />}
               </div>
-              {pack.blocks.map((block) => (
+              {pack.blocks.map((block) => {
+                const isSelected = selectedIds.includes(block.id);
+                const isPrimary = selectedId === block.id;
+                return (
                 <div
                   key={block.id}
-                  className={`block block-${block.type}${selectedId === block.id ? " selected" : ""}${mode === "preview" ? " preview" : ""}`}
+                  className={`block block-${block.type}${isSelected ? " selected" : ""}${isPrimary && multiSelect ? " primary" : ""}${mode === "preview" ? " preview" : ""}`}
                   style={{
                     left: block.x,
                     top: block.y,
                     width: block.w,
                     height: block.h,
                   }}
-                  onPointerDown={(e) => startMove(block, e)}
+                  onPointerDown={(e) => {
+                    if (mode === "edit") startMove(block, e);
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedId(block.id);
+                    // Edit mode selects on pointerDown; preview mode still allows select.
+                    if (mode === "preview") selectBlock(block.id, e);
                   }}
                 >
-                  <MockBlockPreview block={block} preview={mode === "preview"} />
+                  <MockBlockPreview
+                    block={block}
+                    preview={mode === "preview"}
+                    board={library?.previewBoard}
+                  />
                   {mode === "edit" && (
                     <button
                       type="button"
@@ -442,14 +870,18 @@ export default function App() {
                       title="Delete"
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteBlock(block.id);
+                        if (selectedIds.includes(block.id) && selectedIds.length > 1) {
+                          deleteBlocks(selectedIds);
+                        } else {
+                          deleteBlock(block.id);
+                        }
                       }}
                       onPointerDown={(e) => e.stopPropagation()}
                     >
                       ×
                     </button>
                   )}
-                  {mode === "edit" && selectedId === block.id && (
+                  {mode === "edit" && isPrimary && (
                     <div className="resize-corners">
                       {(["nw", "ne", "sw", "se"] as ResizeCorner[]).map((corner) => (
                         <button
@@ -464,24 +896,100 @@ export default function App() {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           </div>
           <p className="stage-caption">
             {mode === "preview" ? "Preview" : "Edit"} · canvas{" "}
             {canvasSize.width}×{canvasSize.height}
-            {canvasSize.height > VIEWPORT_HEIGHT || canvasSize.width > VIEWPORT_WIDTH
-              ? " · beyond first screen"
-              : ""}{" "}
+            {canvasSize.height > VIEWPORT_HEIGHT ? " · scrolls vertically" : ""}{" "}
             · {(scale * 100).toFixed(0)}%
-            {selectedId ? ` · selected ${selectedId}` : ""}
+            {selectedIds.length
+              ? multiSelect
+                ? ` · ${selectedIds.length} selected`
+                : ` · selected ${selectedId}`
+              : ""}
+            {" · middle-drag pans"}
           </p>
         </main>
 
         <aside className="inspector">
           <h2>Inspector</h2>
           {!selected ? (
-            <p className="hint">Select a block to bind data, toggle trailer, or delete it.</p>
+            <p className="hint">
+              Select a block to bind data, toggle trailer, or delete it. Ctrl/Cmd+click selects
+              multiple rails.
+            </p>
+          ) : multiSelect ? (
+            <div className="inspector-form">
+              <p className="hint">{selectedIds.length} blocks selected</p>
+              <p className="hint">
+                Drag a resize handle on the primary (bright outline) to scale all selected rows by
+                the same amount.
+              </p>
+              <ul className="selection-list">
+                {selectedBlocks.map((b) => (
+                  <li key={b.id}>
+                    <button type="button" className="btn ghost full" onClick={() => selectOnly(b.id)}>
+                      {b.label || blockDef(b.type).label}
+                      {b.locked ? " · locked" : ""}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={selectedBlocks.every((b) => b.locked === true)}
+                  onChange={(e) =>
+                    updateBlocks(
+                      selectedIds,
+                      e.target.checked ? { locked: true } : { locked: false },
+                    )
+                  }
+                />
+                Lock selected rows (keep slot when rotating)
+              </label>
+              <label>
+                Content align (all rails)
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const value = e.target.value as ViewBlock["contentAlign"];
+                    if (!value) return;
+                    updateBlocks(
+                      selectedBlocks
+                        .filter(
+                          (b) =>
+                            b.type === "mediaRail" ||
+                            b.type === "genreRail" ||
+                            b.type === "collectionRail",
+                        )
+                        .map((b) => b.id),
+                      { contentAlign: value },
+                    );
+                    e.target.value = "";
+                  }}
+                >
+                  <option value="" disabled>
+                    Apply to selection…
+                  </option>
+                  <option value="start">Start (left)</option>
+                  <option value="center">Center</option>
+                </select>
+              </label>
+              <button type="button" className="btn ghost full" onClick={centerSelected}>
+                Snap all centered on TV screen
+              </button>
+              <button
+                type="button"
+                className="btn danger full"
+                onClick={() => deleteBlocks(selectedIds)}
+              >
+                Delete {selectedIds.length} blocks
+              </button>
+            </div>
           ) : (
             <div className="inspector-form">
               <label>
@@ -515,6 +1023,24 @@ export default function App() {
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={
+                    selected.locked === true ||
+                    (selected.locked !== false &&
+                      (selected.type === "topNav" ||
+                        selected.type === "hero" ||
+                        selected.dataSource === "continueWatching"))
+                  }
+                  onChange={(e) =>
+                    updateBlock(selected.id, {
+                      locked: e.target.checked,
+                    })
+                  }
+                />
+                Lock row (fixed slot when unlocked rails rotate)
               </label>
               {(selected.type === "hero" || selected.type === "mediaRail") && (
                 <label className="checkbox">
@@ -562,6 +1088,31 @@ export default function App() {
               <button type="button" className="btn ghost full" onClick={centerSelected}>
                 Snap center on TV screen
               </button>
+              {selected.type === "collectionRail" &&
+                !parseFolderDataSource(selected.dataSource) && (
+                  <button
+                    type="button"
+                    className="btn primary full"
+                    onClick={expandSelectedCollection}
+                  >
+                    Expand into content rails
+                  </button>
+                )}
+              {parseFolderDataSource(selected.dataSource) && (
+                <button
+                  type="button"
+                  className="btn primary full"
+                  onClick={expandSelectedCollection}
+                >
+                  Expand folder into catalog rails
+                </button>
+              )}
+              {selected.type === "mediaRail" &&
+                parseFolderDataSource(selected.dataSource) && (
+                  <p className="hint">
+                    Folder content rail — expand again to split into Movies / Shows / etc.
+                  </p>
+                )}
               <div className="geometry">
                 <span>
                   x {selected.x} · y {selected.y}
@@ -575,6 +1126,56 @@ export default function App() {
               </button>
             </div>
           )}
+          <div className="inspector-form pack-rotate">
+            <h3>Unlock rotation</h3>
+            <p className="hint">
+              Order-only shuffle for unlocked rails. Locked rows keep their vertical slots. TV
+              rotates at most once per interval (≥{MIN_ROTATE_INTERVAL_HOURS}h).
+            </p>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={pack.rotateUnlocked === true}
+                onChange={(e) =>
+                  setPack((prev) => ({
+                    ...prev,
+                    rotateUnlocked: e.target.checked,
+                    rotateIntervalHours: normalizeRotateIntervalHours(
+                      prev.rotateIntervalHours ?? MIN_ROTATE_INTERVAL_HOURS,
+                    ),
+                  }))
+                }
+              />
+              Randomize unlocked rails
+            </label>
+            <label>
+              Interval (hours)
+              <input
+                type="number"
+                min={MIN_ROTATE_INTERVAL_HOURS}
+                step={1}
+                disabled={!pack.rotateUnlocked}
+                value={normalizeRotateIntervalHours(
+                  pack.rotateIntervalHours ?? MIN_ROTATE_INTERVAL_HOURS,
+                )}
+                onChange={(e) => {
+                  const hours = normalizeRotateIntervalHours(Number(e.target.value));
+                  setPack((prev) => ({
+                    ...prev,
+                    rotateIntervalHours: hours,
+                  }));
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn primary full"
+              disabled={!pack.rotateUnlocked}
+              onClick={reshufflePreview}
+            >
+              Reshuffle preview
+            </button>
+          </div>
           <button type="button" className="btn ghost full danger-text" onClick={clearAll}>
             Clear canvas
           </button>
@@ -625,5 +1226,26 @@ function resizeFromCorner(
     y: Math.round(top),
     w: Math.round(nextRight - left),
     h: Math.round(nextBottom - top),
+  };
+}
+
+/** Apply the same width/height delta (and west/north origin shift) to a block. */
+function applyResizeDelta(
+  orig: ViewBlock,
+  corner: ResizeCorner,
+  dw: number,
+  dh: number,
+): Pick<ViewBlock, "x" | "y" | "w" | "h"> {
+  let x = orig.x;
+  let y = orig.y;
+  const w = Math.max(1, orig.w + dw);
+  const h = Math.max(1, orig.h + dh);
+  if (corner.includes("w")) x = Math.max(0, orig.x - dw);
+  if (corner.includes("n")) y = Math.max(0, orig.y - dh);
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    w: Math.round(w),
+    h: Math.round(h),
   };
 }
