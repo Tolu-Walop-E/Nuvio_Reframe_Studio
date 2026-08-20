@@ -1413,13 +1413,16 @@ select:focus {
 .mock-chip {
   background:#1c2420;
   border:1px solid #ffffff1f;
-  border-radius:10px;
+  border-radius:999px;
   flex:none;
   place-items:center;
-  min-width:130px;
-  height:54px;
+  min-width:0;
+  width:auto;
+  padding:0 18px;
+  height:40px;
   font-weight:650;
   display:grid;
+  white-space:nowrap;
 }
 
 .mock-spacer {

@@ -139,6 +139,14 @@ export function parseFolderDataSource(
   return { collectionId: m[1], folderId: m[2] };
 }
 
+/** `collection:id` hub (not an expanded folder rail). */
+export function parseCollectionHubDataSource(dataSource: string): string | null {
+  const ds = dataSource.trim();
+  if (!ds.startsWith("collection:") || ds.includes(":folder:")) return null;
+  const id = ds.slice("collection:".length).trim();
+  return id || null;
+}
+
 /**
  * Replace a collection rail with content rails for every folder inside it.
  *

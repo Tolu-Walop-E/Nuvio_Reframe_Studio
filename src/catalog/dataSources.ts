@@ -45,7 +45,7 @@ export const BUILTIN_DATA_SOURCES: DataSourceDefinition[] = [
   {
     id: "genres",
     label: "Genres",
-    description: "Genre discovery targets",
+    description: "TV fills text pills from installed catalogs",
     allowedBlocks: ["genreRail"],
   },
   {

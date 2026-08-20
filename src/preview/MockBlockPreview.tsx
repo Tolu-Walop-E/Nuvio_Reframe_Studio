@@ -1,15 +1,16 @@
 import type { CSSProperties } from "react";
-import type { PreviewBoard, PreviewItem } from "../nuvio/previewBoard";
+import type { CollectionFolderPreview, PreviewBoard, PreviewItem } from "../nuvio/previewBoard";
 import type { ViewBlock, ViewPack } from "../types/viewPack";
 import {
   FOCUSED_METADATA_HEIGHT,
   MAX_LABELED_POSTER_HEIGHT,
   blockShowsFocusedPosterInfo,
 } from "../types/viewPack";
-import { railTitleWithCatalogType } from "../views/expandCollection";
+import { parseCollectionHubDataSource, railTitleWithCatalogType } from "../views/expandCollection";
 
 const POSTER_HUES = [12, 28, 200, 260, 320, 160, 45, 185, 5, 95];
 const GENRES = ["Action", "Anime", "Comedy", "Drama", "Sci‑Fi", "Thriller", "Horror", "Romance"];
+const GENERIC_PILLS = ["Genre", "Genre", "Genre", "Genre", "Genre", "Genre", "Genre", "Genre"];
 const NAV = ["Home", "Movies", "TV Shows", "Watchlist"];
 const PLACEHOLDER_BLURBS = [
   "A daring crew races against time across rival colonies.",
@@ -56,11 +57,27 @@ type Props = {
   preview: boolean;
   board?: PreviewBoard | null;
   pack?: Pick<ViewPack, "showFocusedPosterInfo"> | null;
-  /** Live genre chip labels from the signed-in account (Genres collection). */
-  genreLabels?: string[] | null;
+  /** Live collection folders — used when a text-pill rail is bound to `collection:id`. */
+  collections?: CollectionFolderPreview[] | null;
 };
 
-export function MockBlockPreview({ block, preview, board, pack, genreLabels }: Props) {
+function pillPreviewLabels(
+  block: ViewBlock,
+  collections?: CollectionFolderPreview[] | null,
+): string[] {
+  const collectionId = parseCollectionHubDataSource(block.dataSource);
+  if (collectionId) {
+    const titles =
+      collections
+        ?.find((c) => c.collectionId === collectionId)
+        ?.folders.map((f) => f.title.trim())
+        .filter(Boolean) ?? [];
+    if (titles.length > 0) return titles.slice(0, 16);
+  }
+  return GENERIC_PILLS;
+}
+
+export function MockBlockPreview({ block, preview, board, pack, collections }: Props) {
   if (block.type === "topNav") {
     return (
       <div className={`mock mock-nav${preview ? " rich" : ""}`}>
@@ -124,19 +141,17 @@ export function MockBlockPreview({ block, preview, board, pack, genreLabels }: P
   }
 
   if (block.type === "genreRail") {
-    const chipH = Math.max(36, Math.min(64, Math.round(block.h * 0.45)));
-    const chipW = Math.round(chipH * 2.4);
-    const labels =
-      genreLabels && genreLabels.length > 0 ? genreLabels.slice(0, 12) : GENRES;
+    const chipH = Math.max(32, Math.min(44, Math.round(block.h * 0.4)));
+    const labels = pillPreviewLabels(block, collections);
     return (
       <div className={`mock mock-rail${preview ? " rich" : ""}`}>
         <div className="mock-rail-title">{block.label || "Genres"}</div>
         <div className={`mock-row align-${block.contentAlign ?? "start"}`}>
-          {labels.map((g) => (
+          {labels.map((g, i) => (
             <div
-              key={g}
+              key={`${g}-${i}`}
               className="mock-chip"
-              style={{ minWidth: chipW, height: chipH, fontSize: Math.round(chipH * 0.32) }}
+              style={{ height: chipH, fontSize: Math.round(chipH * 0.38) }}
             >
               {g}
             </div>

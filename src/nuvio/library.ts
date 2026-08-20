@@ -83,7 +83,7 @@ const BUILTIN: LiveDataSource[] = [
   {
     id: "genres",
     label: "Genres",
-    description: "Genre discovery targets",
+    description: "TV fills text pills from installed catalogs",
     kind: "builtin",
     allowedBlocks: ["genreRail"],
   },
@@ -237,7 +237,7 @@ async function loadCollections(
     label: c.title,
     description: `Collection · ${c.id}`,
     kind: "collection" as const,
-    allowedBlocks: ["collectionRail", "mediaRail", "hero"] as LiveDataSource["allowedBlocks"],
+    allowedBlocks: ["collectionRail", "mediaRail", "hero", "genreRail"] as LiveDataSource["allowedBlocks"],
   }));
   for (const c of collections) {
     for (const folder of c.folders) {

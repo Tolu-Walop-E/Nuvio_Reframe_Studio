@@ -41,12 +41,12 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
   },
   {
     type: "genreRail",
-    label: "Genre rail",
-    description: "Genre chips — point each chip at a catalog or collection folder",
+    label: "Text pills",
+    description: "Compact text pills from a collection’s folders — or TV catalogs if the source is Genres",
     defaultW: 1920,
-    defaultH: 160,
+    defaultH: 100,
     minW: 640,
-    minH: 120,
+    minH: 72,
   },
   {
     type: "collectionRail",

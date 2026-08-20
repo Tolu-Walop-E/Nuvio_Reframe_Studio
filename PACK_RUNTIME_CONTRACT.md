@@ -20,6 +20,8 @@ Target presentation: **Netflix home** (`HomeLayout.NETFLIX` / pack-forced Netfli
 | Pack `catalogPosterScale` | Global catalog/media poster size (0.7–2.0); with focused info on, max still leaves ≥2 footer lines |
 | Pack `collectionLandscapeScale` | Global collection hub landscape tile size (0.7–2.0) |
 | Continue Watching / top nav blocks | Chrome the TV already owns (presence acknowledged; not freeform-placed) |
+| `genreRail` + `collection:id` | Text pills from that collection’s folder titles (wrap-width). Opens the folder. |
+| `genreRail` + `genres` | Legacy: TV fills pills from installed genre catalogs |
 
 ## Ignored (preview-only / later)
 

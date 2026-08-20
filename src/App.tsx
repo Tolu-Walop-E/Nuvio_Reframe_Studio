@@ -34,7 +34,7 @@ import {
   type ViewBlock,
   type ViewPack,
 } from "./types/viewPack";
-import { expandCollectionIntoContentRails, expandFolderIntoCatalogRails, parseFolderDataSource, dataSourceTypeLabel } from "./views/expandCollection";
+import { expandCollectionIntoContentRails, expandFolderIntoCatalogRails, parseFolderDataSource, parseCollectionHubDataSource, dataSourceTypeLabel } from "./views/expandCollection";
 import {
   deleteSavedView,
   listSavedViews,
@@ -60,10 +60,6 @@ import {
   type StudioScreen,
 } from "./nuvio/screenPacks";
 import {
-  describeGenreTarget,
-  encodeGenreTarget,
-  decodeGenreTarget,
-  genreDestinationOptions,
   homeCatalogPayloadWithGenreTargets,
   type GenreTarget,
 } from "./nuvio/genreTargets";
@@ -761,23 +757,6 @@ export default function App() {
     }
   };
 
-  const genreDestOptions = useMemo(() => {
-    if (!library) return [];
-    return genreDestinationOptions(library.sources, library.collections, library.catalogNames);
-  }, [library]);
-
-  const genreChipRows = useMemo(() => {
-    const fromLibrary = library?.genreChips ?? [];
-    const keys = new Set(fromLibrary.map((c) => c.key));
-    const extras = Object.keys(genreTargets)
-      .filter((k) => !keys.has(k))
-      .map((key) => ({
-        key,
-        label: key.replace(/^genre\|/i, "").replace(/\|(movie|series)$/i, "") || key,
-      }));
-    return [...fromLibrary, ...extras].sort((a, b) => a.label.localeCompare(b.label));
-  }, [library?.genreChips, genreTargets]);
-
   const saveCurrentView = () => {
     const name = window.prompt("Name this layout", pack.name || "My view")?.trim() || pack.name;
     const saved = saveView(pack, name);
@@ -848,6 +827,43 @@ export default function App() {
       next.blocks.find((b) => parseFolderDataSource(b.dataSource));
     setSelectedId(firstContent?.id ?? null);
     showToast("Expanded into folder content rails.");
+  };
+
+  const turnSelectedIntoTextPills = () => {
+    if (!selected) return;
+    const collectionId = parseCollectionHubDataSource(selected.dataSource);
+    if (!collectionId) {
+      showToast("Point this rail at a collection first.");
+      return;
+    }
+    if (
+      selected.type !== "collectionRail" &&
+      selected.type !== "mediaRail" &&
+      selected.type !== "genreRail"
+    ) {
+      return;
+    }
+    const pillH = blockDef("genreRail").defaultH;
+    updateBlock(selected.id, {
+      type: "genreRail",
+      h: pillH,
+      trailer: false,
+      posterGrow: false,
+      showPosterLabels: undefined,
+    });
+    showToast("This rail is now text pills from the collection’s folders.");
+  };
+
+  const turnSelectedIntoCollectionCards = () => {
+    if (!selected) return;
+    if (selected.type !== "genreRail") return;
+    if (!parseCollectionHubDataSource(selected.dataSource)) return;
+    const def = blockDef("collectionRail");
+    updateBlock(selected.id, {
+      type: "collectionRail",
+      h: def.defaultH,
+    });
+    showToast("This rail is collection cards again.");
   };
 
   const arranging = mode === "arrange";
@@ -1188,7 +1204,7 @@ export default function App() {
                       preview={!arranging}
                       board={library?.previewBoard}
                       pack={pack}
-                      genreLabels={library?.genreChips.map((c) => c.label)}
+                      collections={library?.collections}
                     />
 
                     {arranging && (
@@ -1445,70 +1461,21 @@ export default function App() {
                 {selected.type === "genreRail" && (
                   <div className="genre-targets">
                     <div className="genre-targets-head">
-                      <span>Chip destinations</span>
+                      <span>Text pills</span>
                       <span className="badge honored">Honored</span>
                     </div>
-                    <p className="hint">
-                      Point each genre chip at a catalog rail or collection folder. Automatic uses the
-                      matching Genres folder on the TV (same as long-press → Automatic).
-                    </p>
-                    {!session ? (
-                      <p className="hint quiet">Sign in to load Genres / Anime chips from your account.</p>
-                    ) : genreChipRows.length === 0 ? (
-                      <p className="hint quiet">
-                        No Genres collection found yet. Add a “Genres” collection on the TV, then refresh
-                        your Studio library.
+                    {parseCollectionHubDataSource(selected.dataSource) ? (
+                      <p className="hint">
+                        Pills are this collection’s folder titles. TV wraps each pill to the text
+                        width — we don’t pre-fill Action / Comedy / etc.
                       </p>
                     ) : (
-                      <ul className="genre-target-list">
-                        {genreChipRows.map((chip) => {
-                          const current = genreTargets[chip.key];
-                          const value = encodeGenreTarget(current);
-                          return (
-                            <li key={chip.key} className="genre-target-row">
-                              <div className="genre-target-chip">
-                                <span className="genre-chip-label">{chip.label}</span>
-                                <span className="genre-chip-dest quiet">
-                                  {describeGenreTarget(current, genreDestOptions)}
-                                </span>
-                              </div>
-                              <select
-                                className="genre-target-select"
-                                value={value}
-                                onChange={(e) => {
-                                  const next = decodeGenreTarget(e.target.value);
-                                  setGenreTargets((prev) => {
-                                    const copy = { ...prev };
-                                    if (!next) delete copy[chip.key];
-                                    else copy[chip.key] = next;
-                                    return copy;
-                                  });
-                                }}
-                              >
-                                <option value="">Automatic</option>
-                                <optgroup label="Catalog rails">
-                                  {genreDestOptions
-                                    .filter((o) => o.group === "catalog")
-                                    .map((o) => (
-                                      <option key={o.value} value={o.value}>
-                                        {o.label}
-                                      </option>
-                                    ))}
-                                </optgroup>
-                                <optgroup label="Collection folders">
-                                  {genreDestOptions
-                                    .filter((o) => o.group === "folder")
-                                    .map((o) => (
-                                      <option key={o.value} value={o.value}>
-                                        {o.label}
-                                      </option>
-                                    ))}
-                                </optgroup>
-                              </select>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      <p className="hint">
+                        Point this rail at a collection to use that collection’s folders as pills, or
+                        leave Genres so the TV fills from installed catalogs. Use{" "}
+                        <strong>Turn into text pills</strong> on a collection rail to convert it in
+                        place.
+                      </p>
                     )}
                   </div>
                 )}
@@ -1568,6 +1535,34 @@ export default function App() {
                       )}
                   </>
                 )}
+
+                {parseCollectionHubDataSource(selected.dataSource) &&
+                  (selected.type === "collectionRail" || selected.type === "mediaRail") && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn ghost full"
+                        onClick={turnSelectedIntoTextPills}
+                      >
+                        Turn into text pills
+                      </button>
+                      <p className="hint">
+                        Shrinks this rail into wrap-width text pills named after each folder. TV
+                        opens the folder when a pill is selected.
+                      </p>
+                    </>
+                  )}
+
+                {selected.type === "genreRail" &&
+                  parseCollectionHubDataSource(selected.dataSource) && (
+                    <button
+                      type="button"
+                      className="btn ghost full"
+                      onClick={turnSelectedIntoCollectionCards}
+                    >
+                      Turn back into collection cards
+                    </button>
+                  )}
 
                 {selected.w !== VIEWPORT_WIDTH || selected.x !== 0 ? (
                   <button
