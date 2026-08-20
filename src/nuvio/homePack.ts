@@ -20,8 +20,8 @@ export type SyncHomeCatalogPayload = {
 };
 
 const NAV_H = 72;
-const HERO_TOP = 96;
-const HERO_H = 400;
+const HERO_TOP = 108;
+const HERO_H = 360;
 const RAIL_H = 210;
 /** Space for floating rail titles so rows never visually overlap. */
 const RAIL_GAP = 52;

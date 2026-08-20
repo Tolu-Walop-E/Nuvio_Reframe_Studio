@@ -9,7 +9,7 @@ import {
 
 const POSTER_HUES = [12, 28, 200, 260, 320, 160, 45, 185, 5, 95];
 const GENRES = ["Action", "Anime", "Comedy", "Drama", "Sci‑Fi", "Thriller", "Horror", "Romance"];
-const NAV = ["Home", "Movies", "Shows", "Collections"];
+const NAV = ["Home", "Movies", "TV Shows", "Watchlist"];
 const PLACEHOLDER_BLURBS = [
   "A daring crew races against time across rival colonies.",
   "When secrets surface, loyalty becomes the rarest currency.",
@@ -63,15 +63,26 @@ export function MockBlockPreview({ block, preview, board, pack, genreLabels }: P
   if (block.type === "topNav") {
     return (
       <div className={`mock mock-nav${preview ? " rich" : ""}`}>
-        <div className="mock-logo">NUVIO</div>
-        <div className="mock-nav-links">
+        <span className="mock-nav-icon" aria-hidden>
+          <PersonIcon />
+        </span>
+        <span className="mock-nav-spacer" />
+        <div className="mock-nav-pill">
           {NAV.map((item, i) => (
             <span key={item} className={i === 0 ? "active" : ""}>
               {item}
             </span>
           ))}
         </div>
-        <div className="mock-nav-gear">⚙</div>
+        <span className="mock-nav-spacer" />
+        <div className="mock-nav-utils">
+          <span className="mock-nav-icon" aria-hidden>
+            <SearchIcon />
+          </span>
+          <span className="mock-nav-icon" aria-hidden>
+            <SettingsIcon />
+          </span>
+        </div>
       </div>
     );
   }
@@ -80,6 +91,9 @@ export function MockBlockPreview({ block, preview, board, pack, genreLabels }: P
     const items = itemsFor(block, board);
     const hero = items[0];
     const art = hero?.backdrop || hero?.poster;
+    const synopsis =
+      hero?.description?.trim() ||
+      (hero ? PLACEHOLDER_BLURBS[Math.abs(hash(hero.title)) % PLACEHOLDER_BLURBS.length] : null);
     return (
       <div
         className={`mock mock-hero${preview ? " rich" : ""}`}
@@ -96,17 +110,13 @@ export function MockBlockPreview({ block, preview, board, pack, genreLabels }: P
         <div className="mock-hero-art" style={art ? { background: "transparent" } : undefined} />
         <div className="mock-hero-scrim" />
         <div className="mock-hero-copy">
-          <p className="eyebrow">{block.label || "Featured"}</p>
           {hero?.logo ? (
             <img className="mock-hero-logo" src={hero.logo} alt={hero.title} />
           ) : (
             <h3>{hero?.title || heroTitle(block.dataSource)}</h3>
           )}
-          <p className="synopsis">
-            {hero
-              ? `${hero.title}${block.trailer ? " · trailer-ready" : ""}`
-              : `Loading art · ${block.dataSource}`}
-          </p>
+          {synopsis ? <p className="synopsis">{synopsis}</p> : null}
+          <span className="mock-hero-cta">View Details</span>
         </div>
       </div>
     );
@@ -275,4 +285,34 @@ function hash(value: string): number {
   let n = 0;
   for (let i = 0; i < value.length; i++) n = (n + value.charCodeAt(i) * (i + 1)) % 97;
   return n;
+}
+
+function PersonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="8" r="3.2" />
+      <path d="M5.5 19.2c1.4-3.2 3.7-4.7 6.5-4.7s5.1 1.5 6.5 4.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="11" cy="11" r="6.2" />
+      <path d="M16.2 16.2 20 20" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="3" />
+      <path
+        strokeLinecap="round"
+        d="M12 3.6v1.8M12 18.6v1.8M4.9 7.1l1.3 1.3M17.8 15.6l1.3 1.3M3.6 12h1.8M18.6 12h1.8M4.9 16.9l1.3-1.3M17.8 8.4l1.3-1.3"
+      />
+    </svg>
+  );
 }

@@ -15,7 +15,7 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
   {
     type: "topNav",
     label: "Top nav",
-    description: "Home / Movies / Shows / Collections + settings",
+    description: "Profile · Home / Movies / TV Shows / Watchlist · Search / Settings",
     defaultW: 1920,
     defaultH: 72,
     minW: 640,
@@ -26,7 +26,7 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     label: "Hero",
     description: "Netflix inset hero (featured / catalog source)",
     defaultW: 1920,
-    defaultH: 520,
+    defaultH: 360,
     minW: 800,
     minH: 280,
   },
