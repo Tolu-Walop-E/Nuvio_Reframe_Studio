@@ -45,6 +45,92 @@ export function catalogDataSourceId(addonId: string, type: string, catalogId: st
   return `catalog:${addonId}:${type}:${catalogId}`;
 }
 
+export function parseCatalogDataSource(
+  dataSource: string,
+): { addonId: string; type: string; catalogId: string } | null {
+  if (!dataSource.startsWith("catalog:")) return null;
+  const parts = dataSource.slice("catalog:".length).split(":", 3);
+  if (parts.length < 3) return null;
+  const addonId = parts[0].trim();
+  const type = parts[1].trim();
+  const catalogId = parts[2].trim();
+  if (!addonId || !type || !catalogId) return null;
+  return { addonId, type, catalogId };
+}
+
+/** Friendly Movies / TV Shows label from a Stremio catalog type. */
+export function catalogTypeLabel(type: string): string {
+  switch (type.trim().toLowerCase()) {
+    case "movie":
+    case "movies":
+      return "Movies";
+    case "series":
+    case "tv":
+    case "show":
+    case "shows":
+      return "TV Shows";
+    case "channel":
+    case "channels":
+      return "Channels";
+    default: {
+      const trimmed = type.trim();
+      if (!trimmed) return "";
+      return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+    }
+  }
+}
+
+export function dataSourceTypeLabel(dataSource: string): string {
+  const parsed = parseCatalogDataSource(dataSource);
+  return parsed ? catalogTypeLabel(parsed.type) : "";
+}
+
+function labelAlreadyIncludesType(label: string, typeLabel: string): boolean {
+  const text = label.toLowerCase();
+  if (typeLabel === "Movies") return /\bmovies?\b/.test(text);
+  if (typeLabel === "TV Shows") return /\b(tv shows?|series|shows?)\b/.test(text);
+  if (typeLabel === "Channels") return /\bchannels?\b/.test(text);
+  return text.includes(typeLabel.toLowerCase());
+}
+
+/** Folder title plus Movies / TV Shows so expanded rails stay distinguishable. */
+export function expandedCatalogRailLabel(
+  folderTitle: string,
+  source: { type: string; catalogId: string },
+  catalogNames: Record<string, string> = {},
+): string {
+  const typeLabel = catalogTypeLabel(source.type);
+  const named = (
+    catalogNames[`${source.type}:${source.catalogId}`] ||
+    catalogNames[source.catalogId] ||
+    ""
+  ).trim();
+  const title = folderTitle.trim() || named || typeLabel || "Rail";
+  const parts = [title];
+  if (
+    named &&
+    named.toLowerCase() !== title.toLowerCase() &&
+    named.toLowerCase() !== source.catalogId.toLowerCase() &&
+    named.toLowerCase() !== typeLabel.toLowerCase()
+  ) {
+    parts.push(named);
+  }
+  if (typeLabel && !labelAlreadyIncludesType(parts.join(" · "), typeLabel)) {
+    parts.push(typeLabel);
+  }
+  return parts.join(" · ");
+}
+
+/** Preview / toolbar title: keep the authored label, append Movies or TV Shows when missing. */
+export function railTitleWithCatalogType(label: string | undefined, dataSource: string): string {
+  const title = (label ?? "").trim();
+  const typeLabel = dataSourceTypeLabel(dataSource);
+  if (!typeLabel) return title;
+  if (title && labelAlreadyIncludesType(title, typeLabel)) return title;
+  if (!title) return typeLabel;
+  return `${title} · ${typeLabel}`;
+}
+
 export function parseFolderDataSource(
   dataSource: string,
 ): { collectionId: string; folderId: string } | null {
@@ -103,15 +189,7 @@ export function expandCollectionIntoContentRails(
 
     for (const source of sources) {
       const dataSource = catalogDataSourceId(source.addonId, source.type, source.catalogId);
-      const named =
-        catalogNames[`${source.type}:${source.catalogId}`] || catalogNames[source.catalogId];
-      const typeNice = source.type.charAt(0).toUpperCase() + source.type.slice(1);
-      const label =
-        sources.length === 1
-          ? folderTitle
-          : named
-            ? `${folderTitle} · ${named}`
-            : `${folderTitle} · ${typeNice}`;
+      const label = expandedCatalogRailLabel(folderTitle, source, catalogNames);
 
       contentRails.push({
         id: `content-${collectionId.slice(0, 8)}-${folder.id.slice(0, 8)}-${railIndex}`,
@@ -162,9 +240,6 @@ export function expandFolderIntoCatalogRails(
   const railH = catalogRailHeightForExpand(pack);
   const catalogRails: ViewBlock[] = folder.catalogSources.map((source, index) => {
     const dataSource = catalogDataSourceId(source.addonId, source.type, source.catalogId);
-    const named =
-      catalogNames[`${source.type}:${source.catalogId}`] || catalogNames[source.catalogId];
-    const typeNice = source.type.charAt(0).toUpperCase() + source.type.slice(1);
     return {
       id: `catalog-rail-${parsed.folderId.slice(0, 8)}-${index}-${slugId(source.catalogId)}`,
       type: "mediaRail" as const,
@@ -174,7 +249,7 @@ export function expandFolderIntoCatalogRails(
       h: railH,
       dataSource,
       trailer: true,
-      label: named ? `${folderTitle} · ${named}` : `${folderTitle} · ${typeNice}`,
+      label: expandedCatalogRailLabel(folderTitle, source, catalogNames),
       posterGrow: true,
       contentAlign: block.contentAlign ?? "start",
     };

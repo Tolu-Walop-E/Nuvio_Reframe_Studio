@@ -6,6 +6,7 @@ import {
   MAX_LABELED_POSTER_HEIGHT,
   blockShowsFocusedPosterInfo,
 } from "../types/viewPack";
+import { railTitleWithCatalogType } from "../views/expandCollection";
 
 const POSTER_HUES = [12, 28, 200, 260, 320, 160, 45, 185, 5, 95];
 const GENRES = ["Action", "Anime", "Comedy", "Drama", "Sci‑Fi", "Thriller", "Horror", "Romance"];
@@ -177,7 +178,7 @@ export function MockBlockPreview({ block, preview, board, pack, genreLabels }: P
         className="mock-rail-title"
         style={{ fontSize: Math.max(16, Math.min(26, Math.round(block.h * 0.12))) }}
       >
-        {block.label || block.type}
+        {railTitleWithCatalogType(block.label, block.dataSource) || block.type}
       </div>
       <div className={`mock-row align-${block.contentAlign ?? "start"}`}>
         {Array.from({ length: count }, (_, i) => {
