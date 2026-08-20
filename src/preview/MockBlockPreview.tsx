@@ -1,10 +1,22 @@
 import type { CSSProperties } from "react";
 import type { PreviewBoard, PreviewItem } from "../nuvio/previewBoard";
-import type { ViewBlock } from "../types/viewPack";
+import type { ViewBlock, ViewPack } from "../types/viewPack";
+import {
+  FOCUSED_METADATA_HEIGHT,
+  MAX_LABELED_POSTER_HEIGHT,
+  blockShowsFocusedPosterInfo,
+} from "../types/viewPack";
 
 const POSTER_HUES = [12, 28, 200, 260, 320, 160, 45, 185, 5, 95];
 const GENRES = ["Action", "Anime", "Comedy", "Drama", "Sci‑Fi", "Thriller", "Horror", "Romance"];
 const NAV = ["Home", "Movies", "Shows", "Collections"];
+const PLACEHOLDER_BLURBS = [
+  "A daring crew races against time across rival colonies.",
+  "When secrets surface, loyalty becomes the rarest currency.",
+  "An ordinary town hides an extraordinary myth.",
+  "Found family, found footage — nothing stays buried.",
+  "Love, loss, and the machines that keep us company.",
+];
 
 function fallbackPosterStyle(index: number, w: number, h: number): CSSProperties {
   const hue = POSTER_HUES[index % POSTER_HUES.length];
@@ -19,25 +31,35 @@ function fallbackPosterStyle(index: number, w: number, h: number): CSSProperties
 }
 
 /** Cards scale with the rail container so resize grows/shrinks posters together. */
-function cardDims(block: ViewBlock, landscape: boolean): { w: number; h: number } {
-  const padY = 32;
+function cardDims(
+  block: ViewBlock,
+  landscape: boolean,
+  withLabels: boolean,
+): { w: number; h: number } {
+  // When focused info is on, reserve a full Netflix-style footer (title+facts+3 lines).
+  const labelReserve = withLabels ? FOCUSED_METADATA_HEIGHT : 0;
+  const padY = 32 + labelReserve;
   const availH = Math.max(40, block.h - padY);
-  const h = Math.round(availH * 0.9);
+  const posterCap = withLabels ? MAX_LABELED_POSTER_HEIGHT : Math.round(block.h * 0.85);
+  const h = Math.min(Math.round(availH * 0.9), posterCap);
   const ratio = landscape ? 210 / 118 : 118 / 178;
   let w = Math.round(h * ratio);
   // Keep a sensible min so tiny rails still read as posters.
   w = Math.max(landscape ? 72 : 48, w);
   const hOut = Math.max(40, Math.round(w / ratio));
-  return { w, h: Math.min(hOut, availH) };
+  return { w, h: Math.min(hOut, availH, posterCap) };
 }
 
 type Props = {
   block: ViewBlock;
   preview: boolean;
   board?: PreviewBoard | null;
+  pack?: Pick<ViewPack, "showFocusedPosterInfo"> | null;
+  /** Live genre chip labels from the signed-in account (Genres collection). */
+  genreLabels?: string[] | null;
 };
 
-export function MockBlockPreview({ block, preview, board }: Props) {
+export function MockBlockPreview({ block, preview, board, pack, genreLabels }: Props) {
   if (block.type === "topNav") {
     return (
       <div className={`mock mock-nav${preview ? " rich" : ""}`}>
@@ -85,10 +107,6 @@ export function MockBlockPreview({ block, preview, board }: Props) {
               ? `${hero.title}${block.trailer ? " · trailer-ready" : ""}`
               : `Loading art · ${block.dataSource}`}
           </p>
-          <div className="mock-hero-ctas">
-            <span className="cta primary">Play</span>
-            <span className="cta">More info</span>
-          </div>
         </div>
       </div>
     );
@@ -97,11 +115,13 @@ export function MockBlockPreview({ block, preview, board }: Props) {
   if (block.type === "genreRail") {
     const chipH = Math.max(36, Math.min(64, Math.round(block.h * 0.45)));
     const chipW = Math.round(chipH * 2.4);
+    const labels =
+      genreLabels && genreLabels.length > 0 ? genreLabels.slice(0, 12) : GENRES;
     return (
       <div className={`mock mock-rail${preview ? " rich" : ""}`}>
         <div className="mock-rail-title">{block.label || "Genres"}</div>
         <div className={`mock-row align-${block.contentAlign ?? "start"}`}>
-          {GENRES.map((g) => (
+          {labels.map((g) => (
             <div
               key={g}
               className="mock-chip"
@@ -127,11 +147,22 @@ export function MockBlockPreview({ block, preview, board }: Props) {
       ? live.every((i) => i.landscape)
       : block.type === "collectionRail");
   const grow = block.posterGrow !== false && !landscape;
-  const { w: cardW, h: cardH } = cardDims(block, landscape);
+  const showLabels = blockShowsFocusedPosterInfo(block, pack ?? {});
+  const { w: cardW, h: cardH } = cardDims(block, landscape, showLabels);
   const count = live.length > 0 ? Math.min(live.length, landscape ? 8 : 12) : landscape ? 7 : 10;
+  const focused = live[0];
+  const focusedTitle = focused?.title?.trim() || "Title 1";
+  const focusedDesc =
+    focused?.description?.trim() ||
+    PLACEHOLDER_BLURBS[hash(block.id) % PLACEHOLDER_BLURBS.length];
+  const focusedFacts = [
+    "2024",
+    GENRES[hash(block.id) % GENRES.length],
+    landscape ? "1h 48m" : "2h 12m",
+  ].join("  ·  ");
 
   return (
-    <div className={`mock mock-rail${preview ? " rich" : ""}`}>
+    <div className={`mock mock-rail${preview ? " rich" : ""}${showLabels ? " has-labels" : ""}`}>
       <div
         className="mock-rail-title"
         style={{ fontSize: Math.max(16, Math.min(26, Math.round(block.h * 0.12))) }}
@@ -142,44 +173,70 @@ export function MockBlockPreview({ block, preview, board }: Props) {
         {Array.from({ length: count }, (_, i) => {
           const item = live[i];
           const src = item?.poster || item?.backdrop;
+          const title = item?.title?.trim() || `Title ${i + 1}`;
+          const description =
+            item?.description?.trim() ||
+            (item ? undefined : PLACEHOLDER_BLURBS[(i + hash(block.id)) % PLACEHOLDER_BLURBS.length]);
           return (
             <div
               key={item?.id ?? i}
               className={[
-                "mock-poster",
+                "mock-card",
                 landscape ? "landscape" : "portrait",
                 i === 0 && preview ? "focused" : "",
                 i === 0 && preview && grow ? "grows" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
-              style={
-                src
-                  ? {
-                      width: cardW,
-                      height: cardH,
-                      backgroundImage: `url(${cssUrl(src)})`,
-                      backgroundSize: "cover",
-                      backgroundPosition: "center",
-                    }
-                  : fallbackPosterStyle(i + hash(block.id), cardW, cardH)
-              }
-              title={item?.title}
+              style={{ width: cardW }}
+              title={description ? `${title} — ${description}` : title}
             >
-              {landscape &&
-                (block.dataSource === "continueWatching" || item?.progress != null) && (
-                  <div className="mock-progress">
-                    <i
-                      style={{
-                        width: `${item?.progress ?? 35 + ((i * 17) % 50)}%`,
-                      }}
-                    />
-                  </div>
-                )}
+              <div
+                className={[
+                  "mock-poster",
+                  landscape ? "landscape" : "portrait",
+                  i === 0 && preview ? "focused" : "",
+                  i === 0 && preview && grow ? "grows" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                style={
+                  src
+                    ? {
+                        width: cardW,
+                        height: cardH,
+                        backgroundImage: `url(${cssUrl(src)})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }
+                    : fallbackPosterStyle(i + hash(block.id), cardW, cardH)
+                }
+              >
+                {landscape &&
+                  (block.dataSource === "continueWatching" || item?.progress != null) && (
+                    <div className="mock-progress">
+                      <i
+                        style={{
+                          width: `${item?.progress ?? 35 + ((i * 17) % 50)}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+              </div>
             </div>
           );
         })}
       </div>
+      {showLabels ? (
+        <div className="mock-focused-meta">
+          <div className="mock-focused-title">{focusedTitle}</div>
+          <div className="mock-focused-facts">
+            <span className="mock-focused-match">94%</span>
+            <span>{focusedFacts}</span>
+          </div>
+          <div className="mock-focused-desc">{focusedDesc}</div>
+        </div>
+      ) : null}
     </div>
   );
 }

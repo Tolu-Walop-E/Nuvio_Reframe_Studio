@@ -1,0 +1,120 @@
+.install-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(200, 80, 60, 0.18), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 100%, rgba(40, 90, 140, 0.2), transparent 50%),
+    linear-gradient(165deg, #12151c 0%, #1a1f2a 45%, #0e1117 100%);
+  color: #f2efe8;
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+.install-card {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.install-brand {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #c4b8a8;
+  font-weight: 600;
+}
+
+.install-card h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.install-lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #c8c2b8;
+}
+
+.install-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 6px;
+  padding: 14px 20px;
+  border-radius: 10px;
+  background: #e8e2d6;
+  color: #141820;
+  font-weight: 650;
+  font-size: 15px;
+  text-decoration: none;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.install-primary:hover {
+  background: #fff8ee;
+  transform: translateY(-1px);
+}
+
+.install-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.install-ghost {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: #f2efe8;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.install-ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.install-url {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 11px;
+  word-break: break-all;
+  color: #d8d2c6;
+}
+
+.install-url.quiet {
+  opacity: 0.72;
+}
+
+.install-msg {
+  margin: 0;
+  font-size: 13px;
+  color: #9dcea8;
+}
+
+.install-warn {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(220, 160, 60, 0.12);
+  border: 1px solid rgba(220, 160, 60, 0.35);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #f0d9a8;
+}
+
+.install-secondary {
+  margin-top: 8px;
+  color: #a8b0c0;
+  font-size: 13px;
+}

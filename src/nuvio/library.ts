@@ -17,6 +17,7 @@ import {
   type CollectionFolderPreview,
 } from "./previewBoard";
 import type { LiveDataSource, NuvioConfig, NuvioLibrarySnapshot, NuvioProfile, NuvioSession } from "./types";
+import { genreChipsFromCatalogs, parseGenreTargets } from "./genreTargets";
 
 type ProfileRow = {
   profile_index?: number;
@@ -127,13 +128,25 @@ export async function loadNuvioLibrary(
   }
   const sources = [...sourceById.values()];
 
+  const genreTargets = parseGenreTargets(
+    (homeSettings.genre_targets ?? {}) as Record<string, unknown>,
+  );
+  const genreChips = genreChipsFromCatalogs(
+    [...BUILTIN, ...collectionData.sources, ...catalogSources, ...syntheticHomeSources],
+    collectionData.folders,
+    catalogNames,
+  );
+
   const homePack = buildPackFromNuvioHome({
     email: session.email,
     profileId: activeProfileId,
     items: homeItems,
     sources,
     catalogNames,
-    hasGenreTargets: Object.keys(homeSettings.genre_targets ?? {}).length > 0,
+    hasGenreTargets:
+      Object.keys(genreTargets).length > 0 ||
+      genreChips.length > 0 ||
+      collectionData.folders.some((c) => (c.title || "").toLowerCase() === "genres"),
   });
 
   // Register catalog URLs referenced by collection folders (Xperience, etc.).
@@ -167,6 +180,9 @@ export async function loadNuvioLibrary(
     previewBoard,
     collections: collectionData.folders,
     catalogNames,
+    homeCatalogSettings: homeSettings,
+    genreTargets,
+    genreChips,
     loadedAt: Date.now(),
   };
 }
@@ -227,6 +243,7 @@ async function loadCollections(
   }
   const folders: CollectionFolderPreview[] = collections.map((c) => ({
     collectionId: c.id,
+    title: c.title,
     folders: c.folders,
   }));
   return { sources, folders };

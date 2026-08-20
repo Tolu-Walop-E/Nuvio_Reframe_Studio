@@ -209,7 +209,7 @@ export const DEMO_PACKS: DemoPack[] = [
   {
     id: netflixLike.id,
     name: netflixLike.name,
-    blurb: "Netflix-style home with collections below the first screen.",
+    blurb: "Vanilla Netflix home contract — hero, rails, collections below the fold.",
     pack: netflixLike,
   },
   {
@@ -243,11 +243,27 @@ export function parseViewPack(raw: unknown): ViewPack {
     schemaVersion: 1,
     id: String(obj.id ?? "imported"),
     name: String(obj.name ?? "Imported view"),
+    description:
+      typeof obj.description === "string" && obj.description.trim()
+        ? obj.description.trim()
+        : undefined,
     canvas: {
       width: VIEWPORT_WIDTH,
       height: VIEWPORT_HEIGHT,
     },
     blocks: obj.blocks as ViewBlock[],
+    showFocusedPosterInfo:
+      obj.showFocusedPosterInfo === true ||
+      (obj.blocks as ViewBlock[]).some((b) => b.showPosterLabels === true),
+    catalogPosterScale:
+      typeof obj.catalogPosterScale === "number"
+        ? Math.min(2, Math.max(0.7, Math.round(obj.catalogPosterScale * 100) / 100))
+        : undefined,
+    collectionLandscapeScale:
+      typeof obj.collectionLandscapeScale === "number"
+        ? Math.min(2, Math.max(0.7, Math.round(obj.collectionLandscapeScale * 100) / 100))
+        : undefined,
+    collectionsOpenInReframe: obj.collectionsOpenInReframe === true,
     rotateUnlocked: obj.rotateUnlocked === true,
     rotateIntervalHours,
     lastShuffleAt:

@@ -1,6 +1,18 @@
 import type { BlockType } from "../catalog/blocks";
 import type { DataSourceId } from "../catalog/dataSources";
 
+/**
+ * How a collection's folders open on the TV.
+ * `reframe` renders them in the Netflix-style home layout instead of Nuvio's
+ * default tabbed grid.
+ */
+export type CollectionOpenStyle = "reframe" | "grid" | "rows";
+
+/** True when this block points at a collection (rail or expanded folder rail). */
+export function isCollectionBlock(block: Pick<ViewBlock, "type" | "dataSource">): boolean {
+  return block.type === "collectionRail" || block.dataSource.startsWith("collection:");
+}
+
 export type ViewBlock = {
   id: string;
   type: BlockType;
@@ -9,14 +21,22 @@ export type ViewBlock = {
   w: number;
   h: number;
   dataSource: DataSourceId;
+  /** Honored on vanilla Netflix: hero + catalog rail in-card trailer (also needs Layout trailers on). */
   trailer: boolean;
   label?: string;
   /** Horizontal placement bias for snap / center controls. */
   hAlign?: "start" | "center";
-  /** Content row alignment inside rails. */
+  /** Content row alignment inside rails. Preview only — not on TV yet. */
   contentAlign?: "start" | "center";
-  /** Vertical/portrait poster focus-grow (media rails). Default true. */
+  /** Honored on vanilla Netflix catalog rails: focus expands to landscape width. Default true. */
   posterGrow?: boolean;
+  /** Show title text under each poster. Default false. */
+  showPosterLabels?: boolean;
+  /**
+   * Collection rails only: how folders opened from this rail render on TV.
+   * Omitted = keep whatever the collection itself is set to in Nuvio.
+   */
+  collectionOpenStyle?: CollectionOpenStyle;
   /**
    * When true, this block keeps its vertical slot during unlock rotation.
    * Omitted = default lock for topNav / hero / continueWatching.
@@ -27,9 +47,35 @@ export type ViewBlock = {
 export type ViewPack = {
   schemaVersion: 1;
   id: string;
+  /** Display title for the pack (also used for slug id). */
   name: string;
+  /** Short blurb shown in Studio share UI and on TV after import. */
+  description?: string;
   canvas: { width: number; height: number };
   blocks: ViewBlock[];
+  /**
+   * Global: Netflix catalogue footer (title / facts / 3 desc lines)
+   * under catalog & collection rails on vanilla Nuvio. Never applies to Continue Watching or genres.
+   * When on, those rails are height-capped so 3 description lines always fit.
+   * Packs drive NetflixHomeContent on vanilla Nuvio (contract v1) — not Modern chrome.
+   */
+  showFocusedPosterInfo?: boolean;
+  /**
+   * Global catalog/media poster size on Netflix home (1 = default).
+   * Multiplies per-rail height scales. Honored on vanilla.
+   */
+  catalogPosterScale?: number;
+  /**
+   * Global collection hub landscape tile size on Netflix home (1 = default).
+   * Honored on vanilla.
+   */
+  collectionLandscapeScale?: number;
+  /**
+   * Global: open every collection folder in this pack's Reframe / Netflix view
+   * (hero + rails) instead of the old Nuvio tabbed grid. Per-rail
+   * `collectionOpenStyle` still overrides for that collection when set.
+   */
+  collectionsOpenInReframe?: boolean;
   /** When true, unlocked rails permute on an interval (order-only). */
   rotateUnlocked?: boolean;
   /** Hours between reshuffles; minimum 12. */
@@ -43,6 +89,92 @@ export type ViewPack = {
 /** First TV viewport guide — Nuvio scrolls beyond this. */
 export const VIEWPORT_WIDTH = 1920;
 export const VIEWPORT_HEIGHT = 1080;
+
+/** Pack global card scale range (matches TV clamp). */
+export const MIN_PACK_CARD_SCALE = 0.7;
+/** High enough that catalog posters can grow large while focused info stays readable. */
+export const MAX_PACK_CARD_SCALE = 2;
+export const DEFAULT_PACK_CARD_SCALE = 1;
+
+export function normalizePackCardScale(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_PACK_CARD_SCALE;
+  return Math.min(MAX_PACK_CARD_SCALE, Math.max(MIN_PACK_CARD_SCALE, Math.round(n * 100) / 100));
+}
+
+/**
+ * Netflix-style focused-info footer under a catalog rail (1080p px):
+ * facts row + minimum 2 synopsis lines (TV matches this reserve).
+ */
+export const FOCUSED_METADATA_HEIGHT = 120;
+
+/** Max poster art height when focused info is on — leaves room for ≥2 desc lines. */
+export const MAX_LABELED_POSTER_HEIGHT = 300;
+
+/** Max media/collection rail block height when focused info is enabled. */
+export const MAX_LABELED_RAIL_HEIGHT =
+  32 /* title padding */ + MAX_LABELED_POSTER_HEIGHT + FOCUSED_METADATA_HEIGHT;
+
+/**
+ * Height cap for a rail given the pack-level focused-info toggle.
+ * Continue Watching / genre / hero stay uncapped by this rule.
+ * When focused info is off, catalog posters may grow to a full TV page.
+ */
+export function maxRailHeightForBlock(
+  block: Pick<ViewBlock, "type" | "dataSource">,
+  pack: Pick<ViewPack, "showFocusedPosterInfo">,
+): number | null {
+  if (block.type !== "mediaRail" && block.type !== "collectionRail") return null;
+  if (block.type === "mediaRail" && block.dataSource === "continueWatching") return null;
+  if (pack.showFocusedPosterInfo === true) return MAX_LABELED_RAIL_HEIGHT;
+  return null;
+}
+
+export function clampBlockHeight(
+  block: ViewBlock,
+  pack: Pick<ViewPack, "showFocusedPosterInfo">,
+): ViewBlock {
+  const maxH = maxRailHeightForBlock(block, pack);
+  if (maxH == null || block.h <= maxH) return block;
+  return { ...block, h: maxH };
+}
+
+export function clampBlocksHeight(
+  blocks: ViewBlock[],
+  pack: Pick<ViewPack, "showFocusedPosterInfo">,
+): ViewBlock[] {
+  return blocks.map((b) => clampBlockHeight(b, pack));
+}
+
+/** True when this block should show the Netflix-style focused footer in preview. */
+export function blockShowsFocusedPosterInfo(
+  block: ViewBlock,
+  pack: Pick<ViewPack, "showFocusedPosterInfo">,
+): boolean {
+  if (pack.showFocusedPosterInfo !== true) return false;
+  if (block.type === "genreRail" || block.type === "hero" || block.type === "topNav" || block.type === "spacer") {
+    return false;
+  }
+  if (block.type === "mediaRail" && block.dataSource === "continueWatching") return false;
+  return block.type === "mediaRail" || block.type === "collectionRail";
+}
+
+/**
+ * Promote legacy per-rail `showPosterLabels` into the pack-level flag and clamp heights.
+ */
+export function withFocusedPosterInfoNorm(pack: ViewPack): ViewPack {
+  const inherited =
+    pack.showFocusedPosterInfo === true ||
+    pack.blocks.some((b) => b.showPosterLabels === true);
+  const next: ViewPack = {
+    ...pack,
+    showFocusedPosterInfo: inherited ? true : pack.showFocusedPosterInfo,
+  };
+  return {
+    ...next,
+    blocks: clampBlocksHeight(next.blocks, next),
+  };
+}
 
 /** @deprecated Prefer VIEWPORT_* */
 export const CANVAS_WIDTH = VIEWPORT_WIDTH;
@@ -122,6 +254,77 @@ export function restackVertically(blocks: ViewBlock[], gap = 44): ViewBlock[] {
 
   const byId = new Map(sorted.map((b) => [b.id, b]));
   return next.map((b) => byId.get(b.id) ?? b);
+}
+
+/** Soft pack: max counted catalog/collection rails that may start in the first TV screen. */
+export const MAX_COUNTED_RAILS_IN_VIEWPORT = 3;
+
+export function isContinueWatchingRail(block: ViewBlock): boolean {
+  return block.type === "mediaRail" && block.dataSource === "continueWatching";
+}
+
+/**
+ * Rails that consume the first-screen budget.
+ * Excludes hero, genre rail, Continue Watching, top nav, and spacers.
+ */
+export function countsTowardViewportRailBudget(block: ViewBlock): boolean {
+  if (block.type === "collectionRail") return true;
+  if (block.type === "mediaRail" && !isContinueWatchingRail(block)) return true;
+  return false;
+}
+
+export function countedRailsStartingInViewport(
+  blocks: ViewBlock[],
+  viewportHeight = VIEWPORT_HEIGHT,
+): ViewBlock[] {
+  return blocks
+    .filter(countsTowardViewportRailBudget)
+    .filter((b) => b.y < viewportHeight)
+    .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+}
+
+/**
+ * Soft-pack constraint: at most `max` counted rails may start inside the first
+ * TV viewport. Hero / genres / Continue Watching don't count. Extra counted
+ * rails are pushed so they begin at/below the fold; then restacked. Packs can
+ * still hold any number of rails overall — only the first screen is limited.
+ */
+export function enforceViewportRailBudget(
+  blocks: ViewBlock[],
+  max = MAX_COUNTED_RAILS_IN_VIEWPORT,
+  gap = 44,
+  viewportHeight = VIEWPORT_HEIGHT,
+): ViewBlock[] {
+  const next = blocks.map((b) => clampBlockToViewport({ ...b }));
+  const inFirst = countedRailsStartingInViewport(next, viewportHeight);
+  if (inFirst.length <= max) {
+    return restackVertically(next, gap);
+  }
+
+  const byId = new Map(next.map((b) => [b.id, b]));
+  for (const excess of inFirst.slice(max)) {
+    const cur = byId.get(excess.id);
+    if (!cur) continue;
+    cur.y = Math.max(cur.y, viewportHeight);
+  }
+
+  return restackVertically(
+    next.map((b) => byId.get(b.id) ?? b),
+    gap,
+  );
+}
+
+/** Restack + apply first-screen catalog rail budget. Prefer this after edit gestures. */
+export function layoutBlocks(
+  blocks: ViewBlock[],
+  gap = 44,
+  pack: Pick<ViewPack, "showFocusedPosterInfo"> = {},
+): ViewBlock[] {
+  return enforceViewportRailBudget(
+    restackVertically(clampBlocksHeight(blocks, pack), gap),
+    MAX_COUNTED_RAILS_IN_VIEWPORT,
+    gap,
+  );
 }
 
 export function createEmptyPack(name = "Untitled home"): ViewPack {

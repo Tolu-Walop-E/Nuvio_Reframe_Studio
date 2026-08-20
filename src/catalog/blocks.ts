@@ -24,7 +24,7 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
   {
     type: "hero",
     label: "Hero",
-    description: "Featured title with optional trailer",
+    description: "Netflix inset hero (featured / catalog source)",
     defaultW: 1920,
     defaultH: 520,
     minW: 800,
@@ -42,7 +42,7 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
   {
     type: "genreRail",
     label: "Genre rail",
-    description: "Genre chips / targets",
+    description: "Genre chips — point each chip at a catalog or collection folder",
     defaultW: 1920,
     defaultH: 160,
     minW: 640,

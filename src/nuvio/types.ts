@@ -38,5 +38,11 @@ export type NuvioLibrarySnapshot = {
   collections: import("./previewBoard").CollectionFolderPreview[];
   /** Catalog display names keyed by catalogId / type:catalogId. */
   catalogNames: Record<string, string>;
+  /** Home catalog settings payload (items + genre targets) for Send to TV. */
+  homeCatalogSettings: import("./homePack").SyncHomeCatalogPayload;
+  /** Parsed genre chip → destination map. */
+  genreTargets: Record<string, import("./genreTargets").GenreTarget>;
+  /** Genre chips derived from available genre_* catalogs (collection fallback). */
+  genreChips: import("./genreTargets").GenreChip[];
   loadedAt: number;
 };

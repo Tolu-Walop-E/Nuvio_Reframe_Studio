@@ -1,5 +1,5 @@
 import {
-  restackVertically,
+  layoutBlocks,
   type ViewBlock,
   type ViewPack,
   withComputedCanvas,
@@ -65,7 +65,7 @@ export function shuffleUnlockedBlocks(
   );
   const lockedFlags = ordered.map(defaultLocked);
   const unlocked = ordered.filter((_, i) => !lockedFlags[i]);
-  if (unlocked.length <= 1) return restackVertically(blocks);
+  if (unlocked.length <= 1) return layoutBlocks(blocks);
 
   const shuffledUnlocked = fisherYates(unlocked, hashSeed(seed));
   let u = 0;
@@ -84,7 +84,7 @@ export function shuffleUnlockedBlocks(
 
   // Preserve original array identity order (by id) isn't required; consumers
   // usually sort by Y. Return restacked list.
-  return restackVertically(remapped);
+  return layoutBlocks(remapped);
 }
 
 export function normalizeRotateIntervalHours(value: unknown): number {

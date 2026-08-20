@@ -4,6 +4,7 @@ import type { LiveDataSource } from "./types";
 export type PreviewItem = {
   id: string;
   title: string;
+  description?: string;
   poster?: string;
   backdrop?: string;
   logo?: string;
@@ -18,6 +19,7 @@ type CatalogMeta = {
   id?: string;
   type?: string;
   name?: string;
+  description?: string;
   poster?: string;
   background?: string;
   logo?: string;
@@ -39,6 +41,8 @@ export type FolderCatalogSource = {
 
 export type CollectionFolderPreview = {
   collectionId: string;
+  /** Display name of the parent collection (e.g. Genres, Anime). */
+  title?: string;
   folders: Array<{
     id: string;
     title: string;
@@ -298,6 +302,7 @@ export function metaToItem(meta: CatalogMeta, catalogFetchUrl?: string): Preview
   return {
     id: String(meta.id || meta.name || Math.random()),
     title: String(meta.name || "Untitled"),
+    description: meta.description?.trim() || undefined,
     poster,
     backdrop,
     logo: absolutizeUrl(meta.logo, catalogFetchUrl),

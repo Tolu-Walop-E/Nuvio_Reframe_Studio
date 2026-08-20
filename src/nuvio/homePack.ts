@@ -28,8 +28,8 @@ const RAIL_GAP = 52;
 const PAD_X = 0;
 
 /**
- * Rebuild a Studio pack to mirror the user's Nuvio home catalog order
- * (same rails they'd see on TV), using Netflix-style block chrome in preview.
+ * Rebuild a Studio pack to mirror the user's Nuvio home catalog order.
+ * Preview and Send-to-TV target vanilla Nuvio Netflix home (PACK_RUNTIME_CONTRACT.md).
  */
 export function buildPackFromNuvioHome(args: {
   email: string;
@@ -164,6 +164,7 @@ export function buildPackFromNuvioHome(args: {
     schemaVersion: 1,
     id: `nuvio-home-p${profileId}`,
     name: `My Nuvio home · ${email.split("@")[0] || "account"}`,
+    description: "Synced from your Nuvio library order — edit blocks, then Publish link for TV.",
     canvas: { width: VIEWPORT_WIDTH, height: 1080 },
     blocks,
   });

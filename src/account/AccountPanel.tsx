@@ -96,14 +96,14 @@ export function AccountPanel({
 
   return (
     <section className="account-panel">
-      <h2>Nuvio account</h2>
+      <h2>Connect</h2>
       <p className="hint">
-        Sign in with the same email/password as the TV app. Studio rebuilds the canvas from your
-        synced home catalog order (same rails as on TV), plus collections and addon catalogs.
+        Sign in with the same email and password as the TV app. Studio loads your home rail order,
+        collections, and catalogs.
       </p>
 
       <button type="button" className="btn ghost full" onClick={() => setShowKeys((v) => !v)}>
-        {showKeys ? "Hide project settings" : "Project settings (URL / anon key)"}
+        {showKeys ? "Hide project settings" : "Project settings"}
       </button>
 
       {showKeys && (

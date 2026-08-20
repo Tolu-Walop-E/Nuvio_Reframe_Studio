@@ -1,18 +1,18 @@
 # Nuvio Reframe Studio
 
-Visual **home view** editor for [Nuvio TV](https://github.com/Tolu-Walop-E/Nuvio_Reframe).
+Visual **home view** editor for vanilla [Nuvio TV](https://github.com/Tolu-Walop-E/Nuvio_Reframe).
 
-Drag blocks onto a TV canvas, resize them, and point each slot at a known Nuvio data source. Export a `view.json` pack. Nuvio renders packs with its native Compose components (focus + trailers stay in the app).
+Drag blocks onto a TV canvas, reorder them, and point each slot at a known Nuvio data source. Export or **Send to TV** a `view.json` pack. Vanilla Nuvio honors the [Pack Runtime Contract](./PACK_RUNTIME_CONTRACT.md) on **Netflix home** (order, hero, focused-info, rail scales, collection open). Studio never paints the TV.
 
 ## Relationship to Nuvio TV
 
 | Repo | Role |
 |------|------|
-| [Nuvio_Reframe](https://github.com/Tolu-Walop-E/Nuvio_Reframe) | Android TV app (Compose renderer, data, TrailerPlayer) |
+| **NuvioTV** (vanilla) | Android TV runtime — Netflix home + pack contract |
 | **Nuvio_Reframe_Studio** (this repo) | Website to author view packs |
+| NuvioTV_Fork | Optional lab only — not the product path |
 
-**Zero required changes to Nuvio TV to start designing.**  
-Later, Nuvio can load a pack by one layout id/tag. Until then, packs are design output only.
+See [RELATED.md](./RELATED.md). Inspector badges mark **Honored** vs **Preview only** fields.
 
 ## Pack format (v0)
 
