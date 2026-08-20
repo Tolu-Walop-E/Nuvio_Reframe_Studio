@@ -34,7 +34,17 @@ import {
   type ViewBlock,
   type ViewPack,
 } from "./types/viewPack";
-import { expandCollectionIntoContentRails, expandFolderIntoCatalogRails, parseFolderDataSource, parseCollectionHubDataSource, dataSourceTypeLabel } from "./views/expandCollection";
+import {
+  expandCollectionIntoContentRails,
+  expandFolderIntoCatalogRails,
+  parseFolderDataSource,
+  parseCollectionHubDataSource,
+  dataSourceTypeLabel,
+  keepOnlyCatalogTypeInPack,
+  catalogKeepLabel,
+  parseCatalogDataSource,
+  type ExpandKeepOnly,
+} from "./views/expandCollection";
 import {
   deleteSavedView,
   listSavedViews,
@@ -152,9 +162,47 @@ function rowTitle(block: ViewBlock): string {
   return block.label?.trim() || blockDef(block.type).label;
 }
 
+function KeepOnlyControl({
+  value,
+  onChange,
+}: {
+  value: ExpandKeepOnly;
+  onChange: (next: ExpandKeepOnly) => void;
+}) {
+  return (
+    <div className="keep-only">
+      <span>Keep only</span>
+      <div className="keep-only-pills" role="group" aria-label="Keep only Movies or TV Shows">
+        {(
+          [
+            ["all", "Both"],
+            ["movie", "Movies"],
+            ["series", "TV Shows"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={value === id ? "active" : ""}
+            onClick={() => onChange(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function isExpandableRail(block: ViewBlock): boolean {
+  if (parseFolderDataSource(block.dataSource)) return true;
+  return block.type === "collectionRail" && Boolean(parseCollectionHubDataSource(block.dataSource));
+}
+
 export default function App() {
   const [pack, setPack] = useState<ViewPack>(() => clonePack(DEMO_PACKS[1].pack));
-  const [selectedId, setSelectedId] = useState<string | null>("hero");
+  const [selectedIds, setSelectedIds] = useState<string[]>(["hero"]);
+  const [expandKeepOnly, setExpandKeepOnly] = useState<ExpandKeepOnly>("all");
   const [mode, setMode] = useState<StudioMode>("arrange");
   const [zoom, setZoom] = useState<number | "fit">("fit");
   const [fitScale, setFitScale] = useState(0.42);
@@ -181,9 +229,17 @@ export default function App() {
   const [studioScreen, setStudioScreen] = useState<StudioScreen>("home");
   const studioScreenRef = useRef<StudioScreen>("home");
   const screenPacksRef = useRef<ScreenPackMap>(emptyScreenPackMap(pack));
+  const selectionAnchorRef = useRef<string | null>("hero");
 
   packRef.current = pack;
   studioScreenRef.current = studioScreen;
+
+  const selectedId = selectedIds[selectedIds.length - 1] ?? null;
+
+  const selectOnly = useCallback((id: string | null) => {
+    setSelectedIds(id ? [id] : []);
+    selectionAnchorRef.current = id;
+  }, []);
 
   useEffect(() => {
     screenPacksRef.current[studioScreen] = pack;
@@ -199,6 +255,10 @@ export default function App() {
     () => pack.blocks.find((b) => b.id === selectedId) ?? null,
     [pack.blocks, selectedId],
   );
+  const selectedBlocks = useMemo(() => {
+    const byId = new Map(pack.blocks.map((b) => [b.id, b]));
+    return selectedIds.map((id) => byId.get(id)).filter((b): b is ViewBlock => Boolean(b));
+  }, [pack.blocks, selectedIds]);
   const dataSources = useMemo(() => mergeDataSources(library?.sources), [library?.sources]);
   const canvasSize = useMemo(() => computeCanvasSize(displayRows), [displayRows]);
   const firstScreenRails = useMemo(
@@ -274,9 +334,9 @@ export default function App() {
           : opts?.select === "hero"
             ? (ordered.find((b) => b.type === "hero")?.id ?? ordered[0]?.id ?? null)
             : (ordered[0]?.id ?? null);
-      setSelectedId(pick);
+      selectOnly(pick);
     },
-    [commit],
+    [commit, selectOnly],
   );
 
   const applyLibraryScreens = useCallback(
@@ -388,23 +448,38 @@ export default function App() {
     [commit, previewPack],
   );
 
-  const deleteRow = useCallback(
-    (id: string) => {
+  const deleteRows = useCallback(
+    (ids: string[]) => {
+      const idSet = new Set(ids.filter(Boolean));
+      if (idSet.size === 0) return;
       const ordered = orderRows(packRef.current.blocks);
-      const index = ordered.findIndex((b) => b.id === id);
-      const fallback = ordered[index + 1]?.id ?? ordered[index - 1]?.id ?? null;
+      const lastIndex = Math.max(
+        ...ordered.map((b, i) => (idSet.has(b.id) ? i : -1)),
+      );
+      const remaining = ordered.filter((b) => !idSet.has(b.id));
+      const fallback =
+        remaining[Math.min(Math.max(lastIndex, 0), remaining.length - 1)]?.id ??
+        remaining[remaining.length - 1]?.id ??
+        null;
       commit((prev) =>
         withComputedCanvas({
           ...prev,
           blocks: stackRows(
-            orderRows(prev.blocks).filter((b) => b.id !== id),
+            orderRows(prev.blocks).filter((b) => !idSet.has(b.id)),
             prev,
           ),
         }),
       );
-      setSelectedId((cur) => (cur === id ? fallback : cur));
+      selectOnly(fallback);
     },
-    [commit],
+    [commit, selectOnly],
+  );
+
+  const deleteRow = useCallback(
+    (id: string) => {
+      deleteRows([id]);
+    },
+    [deleteRows],
   );
 
   const duplicateRow = useCallback(
@@ -416,9 +491,9 @@ export default function App() {
       const index = ordered.findIndex((b) => b.id === id);
       const next = [...ordered.slice(0, index + 1), copy, ...ordered.slice(index + 1)];
       commit((prev) => withComputedCanvas({ ...prev, blocks: stackRows(next, prev) }));
-      setSelectedId(copy.id);
+      selectOnly(copy.id);
     },
-    [commit],
+    [commit, selectOnly],
   );
 
   const moveRow = useCallback(
@@ -459,11 +534,11 @@ export default function App() {
         const next = [...ordered.slice(0, at), block, ...ordered.slice(at)];
         return withComputedCanvas({ ...prev, blocks: stackRows(next, prev) });
       });
-      setSelectedId(block.id);
+      selectOnly(block.id);
       setAddAtIndex(null);
       setMode("arrange");
     },
-    [commit, dataSources],
+    [commit, dataSources, selectOnly],
   );
 
   const resizeRow = useCallback(
@@ -485,7 +560,7 @@ export default function App() {
     if (mode !== "arrange" || event.button !== 0) return;
     event.stopPropagation();
     event.preventDefault();
-    setSelectedId(block.id);
+    selectOnly(block.id);
     historyRef.current.past.push(packRef.current);
     historyRef.current.future = [];
     setHistoryTick((t) => t + 1);
@@ -505,7 +580,7 @@ export default function App() {
     if (mode !== "arrange" || event.button !== 0) return;
     event.stopPropagation();
     event.preventDefault();
-    setSelectedId(block.id);
+    selectOnly(block.id);
     historyRef.current.past.push(packRef.current);
     historyRef.current.future = [];
     setHistoryTick((t) => t + 1);
@@ -598,39 +673,53 @@ export default function App() {
         return;
       }
       if (typing) return;
-      if (!selectedId) return;
+      if (selectedIds.length === 0) return;
 
       if ((event.key === "Delete" || event.key === "Backspace") && !mod) {
         event.preventDefault();
-        deleteRow(selectedId);
+        deleteRows(selectedIds);
         return;
       }
       if (event.altKey && event.key === "ArrowUp") {
         event.preventDefault();
-        moveRow(selectedId, -1);
+        moveRow(selectedId!, -1);
         return;
       }
       if (event.altKey && event.key === "ArrowDown") {
         event.preventDefault();
-        moveRow(selectedId, 1);
+        moveRow(selectedId!, 1);
         return;
       }
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault();
         const ordered = orderRows(packRef.current.blocks);
-        const index = ordered.findIndex((b) => b.id === selectedId);
+        const fromId = event.shiftKey
+          ? (selectedId ?? selectionAnchorRef.current)
+          : selectedId;
+        const index = ordered.findIndex((b) => b.id === fromId);
         const next = ordered[index + (event.key === "ArrowDown" ? 1 : -1)];
-        if (next) setSelectedId(next.id);
+        if (!next) return;
+        if (event.shiftKey && selectionAnchorRef.current) {
+          const ids = ordered.map((b) => b.id);
+          const a = ids.indexOf(selectionAnchorRef.current);
+          const b = ids.indexOf(next.id);
+          if (a >= 0 && b >= 0) {
+            const [lo, hi] = a < b ? [a, b] : [b, a];
+            setSelectedIds(ids.slice(lo, hi + 1));
+          }
+        } else {
+          selectOnly(next.id);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [deleteRow, moveRow, redo, selectedId, undo]);
+  }, [deleteRows, moveRow, redo, selectOnly, selectedId, selectedIds, undo]);
 
   const clearAll = () => {
     if (!window.confirm("Remove every row from this layout?")) return;
     commit((prev) => withComputedCanvas({ ...prev, blocks: [] }));
-    setSelectedId(null);
+    selectOnly(null);
   };
 
   const loadDemo = (demoId: string) => {
@@ -788,45 +877,120 @@ export default function App() {
     commit(next);
   };
 
+  const selectRail = useCallback(
+    (id: string, event: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) => {
+      const ids = orderRows(packRef.current.blocks).map((b) => b.id);
+      if (event.shiftKey && selectionAnchorRef.current) {
+        const a = ids.indexOf(selectionAnchorRef.current);
+        const b = ids.indexOf(id);
+        if (a >= 0 && b >= 0) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          setSelectedIds(ids.slice(lo, hi + 1));
+          setAddAtIndex(null);
+          return;
+        }
+      }
+      if (event.ctrlKey || event.metaKey) {
+        setSelectedIds((prev) => {
+          if (prev.includes(id)) {
+            const next = prev.filter((x) => x !== id);
+            if (selectionAnchorRef.current === id) {
+              selectionAnchorRef.current = next[next.length - 1] ?? null;
+            }
+            return next;
+          }
+          selectionAnchorRef.current = id;
+          return [...prev, id];
+        });
+        setAddAtIndex(null);
+        return;
+      }
+      selectOnly(id);
+      setAddAtIndex(null);
+    },
+    [selectOnly],
+  );
+
   const expandSelectedCollection = () => {
-    if (!selected) return;
+    const targets = selectedBlocks.filter(isExpandableRail);
+    if (targets.length === 0) return;
     if (!library?.collections?.length) {
       showToast("Sign in and reload your library so collection content is available.");
       return;
     }
-    if (parseFolderDataSource(selected.dataSource)) {
-      const next = expandFolderIntoCatalogRails(
-        packRef.current,
-        selected.id,
-        library.collections,
-        library.catalogNames ?? {},
-      );
-      if (!next) {
-        showToast("No catalog sources found in this folder to expand.");
-        return;
+    let next = packRef.current;
+    let expanded = 0;
+    for (const block of targets) {
+      const folder = parseFolderDataSource(block.dataSource);
+      const result = folder
+        ? expandFolderIntoCatalogRails(
+            next,
+            block.id,
+            library.collections,
+            library.catalogNames ?? {},
+            expandKeepOnly,
+          )
+        : expandCollectionIntoContentRails(
+            next,
+            block.id,
+            library.collections,
+            library.catalogNames ?? {},
+            expandKeepOnly,
+          );
+      if (result) {
+        next = result;
+        expanded += 1;
       }
-      commit(next);
-      setSelectedId(next.blocks.find((b) => b.dataSource.startsWith("catalog:"))?.id ?? null);
-      return;
     }
-    if (selected.type !== "collectionRail") return;
-    if (!selected.dataSource.startsWith("collection:")) return;
-    const next = expandCollectionIntoContentRails(
-      packRef.current,
-      selected.id,
-      library.collections,
-      library.catalogNames ?? {},
-    );
-    if (!next) {
-      showToast("No folders with content found in this collection.");
+    if (!expanded) {
+      showToast(
+        expandKeepOnly === "all"
+          ? "No folders with content found to expand."
+          : `No ${catalogKeepLabel(expandKeepOnly)} catalogs found to expand.`,
+      );
       return;
     }
     commit(next);
-    const firstContent =
-      next.blocks.find((b) => b.dataSource.startsWith("catalog:")) ??
-      next.blocks.find((b) => parseFolderDataSource(b.dataSource));
-    setSelectedId(firstContent?.id ?? null);
-    showToast("Expanded into folder content rails.");
+    const created = next.blocks.filter((b) => parseCatalogDataSource(b.dataSource));
+    selectOnly(created[0]?.id ?? next.blocks[0]?.id ?? null);
+    const suffix =
+      expandKeepOnly === "all"
+        ? "folder content rails"
+        : `${catalogKeepLabel(expandKeepOnly)} rails`;
+    showToast(
+      expanded > 1 ? `Expanded ${expanded} collections into ${suffix}.` : `Expanded into ${suffix}.`,
+    );
+  };
+
+  const keepOnlyOnSelected = () => {
+    if (expandKeepOnly === "all") {
+      showToast("Pick Movies or TV Shows first.");
+      return;
+    }
+    const catalogIds = selectedBlocks
+      .filter((b) => parseCatalogDataSource(b.dataSource))
+      .map((b) => b.id);
+    if (catalogIds.length === 0) {
+      showToast("Select catalog rails, or expand a collection first.");
+      return;
+    }
+    const next = keepOnlyCatalogTypeInPack(packRef.current, catalogIds, expandKeepOnly);
+    if (!next) {
+      showToast(`Selection is already only ${catalogKeepLabel(expandKeepOnly)}.`);
+      return;
+    }
+    const removed = packRef.current.blocks.length - next.blocks.length;
+    commit(next);
+    const kept = catalogIds.filter((id) => next.blocks.some((b) => b.id === id));
+    if (kept.length > 0) {
+      setSelectedIds(kept);
+      selectionAnchorRef.current = kept[kept.length - 1] ?? null;
+    } else {
+      selectOnly(next.blocks[0]?.id ?? null);
+    }
+    showToast(
+      `Kept ${catalogKeepLabel(expandKeepOnly)} · removed ${removed} rail${removed === 1 ? "" : "s"}.`,
+    );
   };
 
   const turnSelectedIntoTextPills = () => {
@@ -1165,7 +1329,8 @@ export default function App() {
 
               {displayRows.map((block, index) => {
                 const stored = storedById.get(block.id) ?? block;
-                const isSelected = selectedId === block.id;
+                const isSelected = selectedIds.includes(block.id);
+                const isPrimary = selectedId === block.id;
                 const isDragging = draggingId === block.id;
                 const sources = sourcesForBlock(stored.type, dataSources);
                 const sourceTypeLabel = dataSourceTypeLabel(stored.dataSource);
@@ -1176,6 +1341,7 @@ export default function App() {
                       "row",
                       `row-${block.type}`,
                       isSelected ? "selected" : "",
+                      isPrimary ? "primary-selected" : "",
                       isDragging ? "dragging" : "",
                       arranging ? "editable" : "",
                       index === displayRows.length - 1 ? "last" : "",
@@ -1191,12 +1357,13 @@ export default function App() {
                       transform: isDragging ? `translateY(${dragOffset}px)` : undefined,
                     }}
                     onPointerDown={(e) => {
-                      if (arranging) startReorder(stored, e);
+                      if (!arranging) return;
+                      if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+                      startReorder(stored, e);
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedId(block.id);
-                      setAddAtIndex(null);
+                      selectRail(block.id, e);
                     }}
                   >
                     <MockBlockPreview
@@ -1386,7 +1553,54 @@ export default function App() {
             </p>
           </div>
 
-          {!selected ? (
+          {selectedIds.length > 1 ? (
+            <>
+              <h2>
+                {selectedIds.length} rails selected
+              </h2>
+              <p className="hint">
+                Shift-click a range, Ctrl or Cmd-click to add or remove. Delete removes the whole
+                selection.
+              </p>
+              <div className="inspector-form">
+                <KeepOnlyControl value={expandKeepOnly} onChange={setExpandKeepOnly} />
+                {selectedBlocks.some(isExpandableRail) && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn ghost full"
+                      onClick={expandSelectedCollection}
+                    >
+                      Expand into folder content rails
+                    </button>
+                    <p className="hint">
+                      Splits each selected collection into title rails
+                      {expandKeepOnly === "all"
+                        ? ", one per folder catalog."
+                        : `, keeping only ${catalogKeepLabel(expandKeepOnly)}.`}
+                    </p>
+                  </>
+                )}
+                {selectedBlocks.some((b) => parseCatalogDataSource(b.dataSource)) && (
+                  <button
+                    type="button"
+                    className="btn ghost full"
+                    disabled={expandKeepOnly === "all"}
+                    onClick={keepOnlyOnSelected}
+                  >
+                    Keep only {expandKeepOnly === "all" ? "Movies or TV Shows" : catalogKeepLabel(expandKeepOnly)}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn ghost full danger-text"
+                  onClick={() => deleteRows(selectedIds)}
+                >
+                  Delete selected rails
+                </button>
+              </div>
+            </>
+          ) : !selected ? (
             <>
               <h2>Row settings</h2>
               <p className="hint">Pick a row on the canvas to edit its behaviour.</p>
@@ -1517,6 +1731,7 @@ export default function App() {
                 {(selected.type === "collectionRail" ||
                   parseFolderDataSource(selected.dataSource)) && (
                   <>
+                    <KeepOnlyControl value={expandKeepOnly} onChange={setExpandKeepOnly} />
                     <button
                       type="button"
                       className="btn ghost full"
@@ -1529,10 +1744,30 @@ export default function App() {
                     {!parseFolderDataSource(selected.dataSource) &&
                       selected.type === "collectionRail" && (
                         <p className="hint">
-                          Splits this collection into one title rail per folder catalog, labeled
-                          Movies or TV Shows from that catalog&apos;s type.
+                          Splits this collection into one title rail per folder catalog
+                          {expandKeepOnly === "all"
+                            ? ", labeled Movies or TV Shows from that catalog's type."
+                            : `, keeping only ${catalogKeepLabel(expandKeepOnly)}.`}
                         </p>
                       )}
+                  </>
+                )}
+
+                {parseCatalogDataSource(selected.dataSource) && (
+                  <>
+                    <KeepOnlyControl value={expandKeepOnly} onChange={setExpandKeepOnly} />
+                    <button
+                      type="button"
+                      className="btn ghost full"
+                      disabled={expandKeepOnly === "all"}
+                      onClick={keepOnlyOnSelected}
+                    >
+                      Keep only {expandKeepOnly === "all" ? "Movies or TV Shows" : catalogKeepLabel(expandKeepOnly)}
+                    </button>
+                    <p className="hint">
+                      Shift-click or Ctrl/Cmd-click other rails, then keep only Movies or TV Shows to
+                      drop the rest from that selection.
+                    </p>
                   </>
                 )}
 

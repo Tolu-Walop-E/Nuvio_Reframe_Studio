@@ -147,6 +147,48 @@ export function parseCollectionHubDataSource(dataSource: string): string | null 
   return id || null;
 }
 
+/** When expanding, emit only movie catalogs, only series catalogs, or both. */
+export type ExpandKeepOnly = "all" | "movie" | "series";
+
+export function sourceMatchesKeep(type: string, keep: ExpandKeepOnly): boolean {
+  if (keep === "all") return true;
+  const normalized = type.trim().toLowerCase();
+  if (keep === "movie") return normalized === "movie" || normalized === "movies";
+  return (
+    normalized === "series" ||
+    normalized === "tv" ||
+    normalized === "show" ||
+    normalized === "shows"
+  );
+}
+
+export function catalogKeepLabel(keep: ExpandKeepOnly): string {
+  if (keep === "movie") return "Movies";
+  if (keep === "series") return "TV Shows";
+  return "Movies and TV Shows";
+}
+
+/** Drop selected catalog rails whose type is not Movies or TV Shows. */
+export function keepOnlyCatalogTypeInPack(
+  pack: ViewPack,
+  blockIds: string[],
+  keep: ExpandKeepOnly,
+): ViewPack | null {
+  if (keep === "all" || blockIds.length === 0) return null;
+  const idSet = new Set(blockIds);
+  const nextBlocks = pack.blocks.filter((block) => {
+    if (!idSet.has(block.id)) return true;
+    const parsed = parseCatalogDataSource(block.dataSource);
+    if (!parsed) return true;
+    return sourceMatchesKeep(parsed.type, keep);
+  });
+  if (nextBlocks.length === pack.blocks.length) return null;
+  return withComputedCanvas({
+    ...pack,
+    blocks: layoutBlocks(nextBlocks, RAIL_GAP, pack),
+  });
+}
+
 /**
  * Replace a collection rail with content rails for every folder inside it.
  *
@@ -159,6 +201,7 @@ export function expandCollectionIntoContentRails(
   collectionBlockId: string,
   collections: CollectionFolderPreview[],
   catalogNames: Record<string, string> = {},
+  keep: ExpandKeepOnly = "all",
 ): ViewPack | null {
   const block = pack.blocks.find((b) => b.id === collectionBlockId);
   if (!block || block.type !== "collectionRail") return null;
@@ -175,9 +218,12 @@ export function expandCollectionIntoContentRails(
 
   for (const folder of collection.folders) {
     const folderTitle = folder.title || folder.id;
-    const sources = folder.catalogSources ?? [];
+    const sources = (folder.catalogSources ?? []).filter((source) =>
+      sourceMatchesKeep(source.type, keep),
+    );
 
     if (sources.length === 0) {
+      if (keep !== "all") continue;
       contentRails.push({
         id: `content-${collectionId.slice(0, 8)}-${folder.id.slice(0, 8)}-${railIndex}`,
         type: "mediaRail",
@@ -234,6 +280,7 @@ export function expandFolderIntoCatalogRails(
   folderBlockId: string,
   collections: CollectionFolderPreview[],
   catalogNames: Record<string, string> = {},
+  keep: ExpandKeepOnly = "all",
 ): ViewPack | null {
   const block = pack.blocks.find((b) => b.id === folderBlockId);
   if (!block) return null;
@@ -246,7 +293,9 @@ export function expandFolderIntoCatalogRails(
 
   const folderTitle = folder.title || block.label || "Folder";
   const railH = catalogRailHeightForExpand(pack);
-  const catalogRails: ViewBlock[] = folder.catalogSources.map((source, index) => {
+  const sources = folder.catalogSources.filter((source) => sourceMatchesKeep(source.type, keep));
+  if (sources.length === 0) return null;
+  const catalogRails: ViewBlock[] = sources.map((source, index) => {
     const dataSource = catalogDataSourceId(source.addonId, source.type, source.catalogId);
     return {
       id: `catalog-rail-${parsed.folderId.slice(0, 8)}-${index}-${slugId(source.catalogId)}`,

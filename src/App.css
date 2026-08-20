@@ -598,6 +598,36 @@ select:focus {
   color: var(--muted);
 }
 
+.keep-only {
+  display: grid;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.keep-only-pills {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+
+.keep-only-pills button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 7px 8px;
+  font-weight: 650;
+  font-size: 12px;
+}
+
+.keep-only-pills button.active {
+  background: var(--panel-2);
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+
 .account-panel input,
 .account-panel select,
 .inspector-form input,
@@ -804,8 +834,13 @@ select:focus {
 }
 
 .row.editable.selected {
-  outline: 3px solid var(--focus);
+  outline: 2px solid rgba(255, 255, 255, 0.45);
   z-index: 4;
+}
+
+.row.editable.selected.primary-selected {
+  outline: 3px solid var(--focus);
+  z-index: 5;
 }
 
 .row.dragging {
@@ -838,7 +873,7 @@ select:focus {
 }
 
 .row.editable:hover .row-toolbar,
-.row.selected .row-toolbar {
+.row.primary-selected .row-toolbar {
   opacity: 1;
   pointer-events: auto;
 }
@@ -931,7 +966,7 @@ select:focus {
 }
 
 .row.editable:hover .row-height-handle,
-.row.selected .row-height-handle {
+.row.primary-selected .row-height-handle {
   opacity: 1;
 }
 
@@ -962,7 +997,7 @@ select:focus {
 }
 
 .row.editable:hover .row-insert,
-.row.selected .row-insert,
+.row.primary-selected .row-insert,
 .row.last .row-insert,
 .row-insert.open,
 .row-insert:hover {
