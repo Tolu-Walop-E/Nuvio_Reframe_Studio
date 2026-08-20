@@ -66,6 +66,8 @@ import {
   emptyScreenPackMap,
   parseScreenPacks,
   screenLabel,
+  screenPacksFromBundle,
+  stripScreenPacks,
   type ScreenPackMap,
   type StudioScreen,
 } from "./nuvio/screenPacks";
@@ -339,24 +341,22 @@ export default function App() {
     [commit, selectOnly],
   );
 
-  const applyLibraryScreens = useCallback(
-    (
-      snap: NuvioLibrarySnapshot,
-      overlay?: { home?: ViewPack | null; movies?: ViewPack | null; shows?: ViewPack | null },
-    ) => {
+  const applyScreenBundle = useCallback(
+    (home: ViewPack, movies?: ViewPack | null, shows?: ViewPack | null) => {
       const rotateUnlocked = packRef.current.rotateUnlocked;
       const rotateIntervalHours = packRef.current.rotateIntervalHours ?? MIN_ROTATE_INTERVAL_HOURS;
       const withRotate = (raw: ViewPack): ViewPack => ({
-        ...clonePack(raw),
+        ...clonePack(stripScreenPacks(raw)),
         rotateUnlocked,
         rotateIntervalHours,
         lastShuffleAt: undefined,
         shuffleSeed: undefined,
       });
+      const map = screenPacksFromBundle(home, movies, shows);
       screenPacksRef.current = {
-        home: withRotate(overlay?.home ?? snap.homePack),
-        movies: withRotate(overlay?.movies ?? snap.moviesPack),
-        shows: withRotate(overlay?.shows ?? snap.showsPack),
+        home: withRotate(map.home),
+        movies: withRotate(map.movies),
+        shows: withRotate(map.shows),
       };
       replacePack(clonePack(screenPacksRef.current[studioScreenRef.current]), { select: "hero" });
       setMode("arrange");
@@ -364,11 +364,29 @@ export default function App() {
     [replacePack],
   );
 
+  const applyLibraryScreens = useCallback(
+    (
+      snap: NuvioLibrarySnapshot,
+      overlay?: { home?: ViewPack | null; movies?: ViewPack | null; shows?: ViewPack | null },
+    ) => {
+      applyScreenBundle(
+        overlay?.home ?? snap.homePack,
+        overlay?.movies ?? snap.moviesPack,
+        overlay?.shows ?? snap.showsPack,
+      );
+    },
+    [applyScreenBundle],
+  );
+
   const applyHomePack = useCallback(
     (snap: NuvioLibrarySnapshot) => {
+      if (snap.authoredHome) {
+        applyScreenBundle(snap.authoredHome, snap.authoredMovies, snap.authoredShows);
+        return;
+      }
       applyLibraryScreens(snap);
     },
-    [applyLibraryScreens],
+    [applyLibraryScreens, applyScreenBundle],
   );
 
   const selectStudioScreen = useCallback(
@@ -725,36 +743,32 @@ export default function App() {
   const loadDemo = (demoId: string) => {
     const demo = DEMO_PACKS.find((d) => d.id === demoId);
     if (!demo) return;
-    replacePack(clonePack(demo.pack), { select: "hero" });
+    applyScreenBundle(demo.pack);
   };
 
   const importFile = async (file: File) => {
     try {
       const parsed = parseScreenPacks(JSON.parse(await file.text()));
-      screenPacksRef.current[studioScreenRef.current] = clonePack(packRef.current);
-      if (parsed.movies) screenPacksRef.current.movies = parsed.movies;
-      if (parsed.shows) screenPacksRef.current.shows = parsed.shows;
-      screenPacksRef.current.home = parsed.home;
-      const screenPack =
-        studioScreenRef.current === "movies"
-          ? parsed.movies ?? parsed.home
-          : studioScreenRef.current === "shows"
-            ? parsed.shows ?? parsed.home
-            : parsed.home;
-      replacePack(clonePack(screenPack), { select: "hero" });
-      showToast("Layout imported.");
+      applyScreenBundle(parsed.home, parsed.movies, parsed.shows);
+      showToast("Layout imported for Home, Movies, and TV Shows.");
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Failed to import pack");
     }
   };
 
   const exportPack = () => {
-    const payload = withComputedCanvas({ ...pack, id: slugify(pack.name), schemaVersion: 1 });
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    screenPacksRef.current[studioScreenRef.current] = clonePack(packRef.current);
+    const payload = attachScreenPacks(
+      screenPacksRef.current.home,
+      screenPacksRef.current.movies,
+      screenPacksRef.current.shows,
+    );
+    const bundled = withComputedCanvas({ ...payload, id: slugify(payload.name), schemaVersion: 1 });
+    const blob = new Blob([JSON.stringify(bundled, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${payload.id}.view.json`;
+    a.download = `${bundled.id}.view.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -827,17 +841,11 @@ export default function App() {
         setShareMessage("No view pack on this account yet. Send to TV from Studio first.");
         return;
       }
-      screenPacksRef.current = {
-        home: clonePack(pulled.pack),
-        movies: clonePack(pulled.movies ?? library?.moviesPack ?? pulled.pack),
-        shows: clonePack(pulled.shows ?? library?.showsPack ?? pulled.pack),
-      };
-      replacePack(clonePack(screenPacksRef.current[studioScreenRef.current]), { select: "hero" });
-      const loadedName = screenPacksRef.current[studioScreenRef.current].name;
+      applyScreenBundle(pulled.pack, pulled.movies, pulled.shows);
       setShareMessage(
-        `Loaded ${screenLabel(studioScreenRef.current)} from your TV account (profile ${pulled.profileId}).`,
+        `Loaded Home, Movies, and TV Shows from your TV account (profile ${pulled.profileId}).`,
       );
-      showToast(`Loaded from TV · ${loadedName}`);
+      showToast(`Loaded from TV · ${pulled.pack.name}`);
     } catch (e) {
       setShareError(true);
       setShareMessage(e instanceof Error ? e.message : String(e));
@@ -847,17 +855,24 @@ export default function App() {
   };
 
   const saveCurrentView = () => {
+    screenPacksRef.current[studioScreenRef.current] = clonePack(packRef.current);
+    const bundled = attachScreenPacks(
+      screenPacksRef.current.home,
+      screenPacksRef.current.movies,
+      screenPacksRef.current.shows,
+    );
     const name = window.prompt("Name this layout", pack.name || "My view")?.trim() || pack.name;
-    const saved = saveView(pack, name);
+    const saved = saveView(bundled, name);
     setSavedViews(listSavedViews());
-    setPack(saved.pack);
-    showToast(`Saved “${saved.name}” in this browser.`);
+    showToast(`Saved “${saved.name}” for Home, Movies, and TV Shows.`);
   };
 
   const openSavedView = (id: string) => {
     const saved = loadSavedView(id);
     if (!saved) return;
-    replacePack(clonePack(saved.pack), { select: "hero" });
+    const parsed = parseScreenPacks(saved.pack);
+    applyScreenBundle(parsed.home, parsed.movies, parsed.shows);
+    showToast(`Applied “${saved.name}” to Home, Movies, and TV Shows.`);
   };
 
   const removeSavedView = (id: string) => {
@@ -1200,7 +1215,7 @@ export default function App() {
               <button
                 type="button"
                 className="stack-main"
-                onClick={() => replacePack(createEmptyPack("Blank home"), { select: "hero" })}
+                onClick={() => applyScreenBundle(createEmptyPack("Blank home"))}
               >
                 <strong>Blank home</strong>
                 <span>Nav, hero, and Continue Watching only</span>

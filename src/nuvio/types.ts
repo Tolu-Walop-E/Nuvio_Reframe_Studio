@@ -48,5 +48,9 @@ export type NuvioLibrarySnapshot = {
   genreTargets: Record<string, import("./genreTargets").GenreTarget>;
   /** Genre chips derived from available genre_* catalogs (collection fallback). */
   genreChips: import("./genreTargets").GenreChip[];
+  /** Studio-authored pack for this profile (view_pack_blobs). Null = generate from catalogs. */
+  authoredHome: import("../types/viewPack").ViewPack | null;
+  authoredMovies: import("../types/viewPack").ViewPack | null;
+  authoredShows: import("../types/viewPack").ViewPack | null;
   loadedAt: number;
 };

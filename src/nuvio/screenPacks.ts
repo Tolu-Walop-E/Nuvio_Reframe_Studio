@@ -75,3 +75,20 @@ export function emptyScreenPackMap(fallback: ViewPack): ScreenPackMap {
     shows: clonePack(base),
   };
 }
+
+/**
+ * Home + Movies + TV Shows as one apply unit.
+ * Missing Movies/Shows packs copy Home so applying a layout hits every Netflix tab.
+ */
+export function screenPacksFromBundle(
+  home: ViewPack,
+  movies?: ViewPack | null,
+  shows?: ViewPack | null,
+): ScreenPackMap {
+  const homePack = clonePack(stripScreenPacks(home));
+  return {
+    home: homePack,
+    movies: clonePack(stripScreenPacks(movies ?? home)),
+    shows: clonePack(stripScreenPacks(shows ?? home)),
+  };
+}

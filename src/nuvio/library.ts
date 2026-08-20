@@ -18,6 +18,7 @@ import {
 } from "./previewBoard";
 import type { LiveDataSource, NuvioConfig, NuvioLibrarySnapshot, NuvioProfile, NuvioSession } from "./types";
 import { genreChipsFromCatalogs, parseGenreTargets } from "./genreTargets";
+import { pullViewPackFromAccount } from "./pullViewPack";
 
 type ProfileRow = {
   profile_index?: number;
@@ -179,6 +180,20 @@ export async function loadNuvioLibrary(
     collections: collectionData.folders,
   });
 
+  let authoredHome: NuvioLibrarySnapshot["authoredHome"] = null;
+  let authoredMovies: NuvioLibrarySnapshot["authoredMovies"] = null;
+  let authoredShows: NuvioLibrarySnapshot["authoredShows"] = null;
+  try {
+    const pulled = await pullViewPackFromAccount(config, session, activeProfileId);
+    if (pulled) {
+      authoredHome = pulled.pack;
+      authoredMovies = pulled.movies;
+      authoredShows = pulled.shows;
+    }
+  } catch {
+    // No view pack on this profile yet — Studio falls back to catalog-generated rails.
+  }
+
   return {
     profileId: activeProfileId,
     profiles,
@@ -192,6 +207,9 @@ export async function loadNuvioLibrary(
     homeCatalogSettings: homeSettings,
     genreTargets,
     genreChips,
+    authoredHome,
+    authoredMovies,
+    authoredShows,
     loadedAt: Date.now(),
   };
 }
