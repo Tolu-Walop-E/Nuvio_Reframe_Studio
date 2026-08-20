@@ -8,7 +8,7 @@ Target presentation: **Netflix home** (`HomeLayout.NETFLIX` / pack-forced Netfli
 
 | Studio control | TV behavior |
 |----------------|-------------|
-| Block **Y-order** + `dataSource` (`catalog:…`, `collection:…`, `collection:…:folder:…`, `genres`) | Strict home rail order / filter — no Netflix fan-out or discovery injection while pack is active. Studio “Expand into folder content rails” becomes one title rail per folder catalog. |
+| Block **Y-order** + `dataSource` (`catalog:…`, `collection:…`, `collection:…:folder:…`, `genres`) | Strict rail order / filter for that Netflix tab — no fan-out or discovery while **that tab's** pack is active. Home / Movies / TV Shows can each have their own order. |
 | **Hero** block (`type: hero` or `dataSource: featured` / catalog source) | Netflix inset hero pinned to that source |
 | Pack `showFocusedPosterInfo` | Netflix catalogue footer (title / facts / synopsis) under catalog & collection rails |
 | `rotateUnlocked` (+ interval / seed) | Unlock-rotate of unlocked rails (order-only) |
@@ -50,6 +50,7 @@ Package ids commonly used for debug builds: `com.nuviodebug.com` (fullDebug). St
 
 - `schemaVersion: 1`
 - Same JSON Studio publishes today; vanilla expands which fields it consumes over phases.
+- Optional `screens.movies` / `screens.shows` nested packs (schemaVersion 1 each). Legacy home-only blobs stay valid. New TVs apply those packs on the Movies and TV Shows tabs.
 
 ## Rule for contributors
 

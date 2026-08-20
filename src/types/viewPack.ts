@@ -84,6 +84,14 @@ export type ViewPack = {
   lastShuffleAt?: number;
   /** Seed for deterministic unlock order until the next interval. */
   shuffleSeed?: string;
+  /**
+   * Nested Movies / TV Shows layouts. Only the Home document carries this.
+   * Omitted = legacy home-only pack (TV Movies/Shows fall back to type filter).
+   */
+  screens?: {
+    movies?: ViewPack;
+    shows?: ViewPack;
+  };
 };
 
 /** First TV viewport guide — Nuvio scrolls beyond this. */

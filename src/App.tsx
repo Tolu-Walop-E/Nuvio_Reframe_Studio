@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AccountPanel } from "./account/AccountPanel";
 import { BLOCK_CATALOG, blockDef, type BlockType } from "./catalog/blocks";
 import { mergeDataSources, sourcesForBlock } from "./catalog/dataSources";
-import { DEMO_PACKS, clonePack, parseViewPack } from "./demos";
+import { DEMO_PACKS, clonePack } from "./demos";
 import { defaultConfig, loadSession, saveSession } from "./nuvio/config";
 import { ensureFreshSession } from "./nuvio/client";
 import { loadNuvioLibrary } from "./nuvio/library";
@@ -50,6 +50,15 @@ import {
 import { pushViewPackToAccount } from "./nuvio/pushViewPack";
 import { pullViewPackFromAccount } from "./nuvio/pullViewPack";
 import { pushHomeCatalogSettings } from "./nuvio/pushHomeCatalog";
+import {
+  STUDIO_SCREENS,
+  attachScreenPacks,
+  emptyScreenPackMap,
+  parseScreenPacks,
+  screenLabel,
+  type ScreenPackMap,
+  type StudioScreen,
+} from "./nuvio/screenPacks";
 import {
   describeGenreTarget,
   encodeGenreTarget,
@@ -173,8 +182,16 @@ export default function App() {
   const packRef = useRef(pack);
   const historyRef = useRef<{ past: ViewPack[]; future: ViewPack[] }>({ past: [], future: [] });
   const [historyTick, setHistoryTick] = useState(0);
+  const [studioScreen, setStudioScreen] = useState<StudioScreen>("home");
+  const studioScreenRef = useRef<StudioScreen>("home");
+  const screenPacksRef = useRef<ScreenPackMap>(emptyScreenPackMap(pack));
 
   packRef.current = pack;
+  studioScreenRef.current = studioScreen;
+
+  useEffect(() => {
+    screenPacksRef.current[studioScreen] = pack;
+  }, [pack, studioScreen]);
 
   const scale = zoom === "fit" ? fitScale : zoom;
   const rows = useMemo(() => orderRows(pack.blocks), [pack.blocks]);
@@ -266,20 +283,45 @@ export default function App() {
     [commit],
   );
 
+  const applyLibraryScreens = useCallback(
+    (
+      snap: NuvioLibrarySnapshot,
+      overlay?: { home?: ViewPack | null; movies?: ViewPack | null; shows?: ViewPack | null },
+    ) => {
+      const rotateUnlocked = packRef.current.rotateUnlocked;
+      const rotateIntervalHours = packRef.current.rotateIntervalHours ?? MIN_ROTATE_INTERVAL_HOURS;
+      const withRotate = (raw: ViewPack): ViewPack => ({
+        ...clonePack(raw),
+        rotateUnlocked,
+        rotateIntervalHours,
+        lastShuffleAt: undefined,
+        shuffleSeed: undefined,
+      });
+      screenPacksRef.current = {
+        home: withRotate(overlay?.home ?? snap.homePack),
+        movies: withRotate(overlay?.movies ?? snap.moviesPack),
+        shows: withRotate(overlay?.shows ?? snap.showsPack),
+      };
+      replacePack(clonePack(screenPacksRef.current[studioScreenRef.current]), { select: "hero" });
+      setMode("arrange");
+    },
+    [replacePack],
+  );
+
   const applyHomePack = useCallback(
     (snap: NuvioLibrarySnapshot) => {
-      const home = clonePack(snap.homePack);
-      replacePack(
-        {
-          ...home,
-          rotateUnlocked: packRef.current.rotateUnlocked,
-          rotateIntervalHours: packRef.current.rotateIntervalHours ?? MIN_ROTATE_INTERVAL_HOURS,
-          lastShuffleAt: undefined,
-          shuffleSeed: undefined,
-        },
-        { select: "hero" },
-      );
-      setMode("arrange");
+      applyLibraryScreens(snap);
+    },
+    [applyLibraryScreens],
+  );
+
+  const selectStudioScreen = useCallback(
+    (next: StudioScreen) => {
+      if (next === studioScreenRef.current) return;
+      screenPacksRef.current[studioScreenRef.current] = clonePack(packRef.current);
+      studioScreenRef.current = next;
+      setStudioScreen(next);
+      replacePack(clonePack(screenPacksRef.current[next]), { select: "hero" });
     },
     [replacePack],
   );
@@ -603,8 +645,18 @@ export default function App() {
 
   const importFile = async (file: File) => {
     try {
-      const text = await file.text();
-      replacePack(parseViewPack(JSON.parse(text)), { select: "hero" });
+      const parsed = parseScreenPacks(JSON.parse(await file.text()));
+      screenPacksRef.current[studioScreenRef.current] = clonePack(packRef.current);
+      if (parsed.movies) screenPacksRef.current.movies = parsed.movies;
+      if (parsed.shows) screenPacksRef.current.shows = parsed.shows;
+      screenPacksRef.current.home = parsed.home;
+      const screenPack =
+        studioScreenRef.current === "movies"
+          ? parsed.movies ?? parsed.home
+          : studioScreenRef.current === "shows"
+            ? parsed.shows ?? parsed.home
+            : parsed.home;
+      replacePack(clonePack(screenPack), { select: "hero" });
       showToast("Layout imported.");
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Failed to import pack");
@@ -639,8 +691,13 @@ export default function App() {
         saveSession(fresh);
       }
       const profileId = library?.profileId ?? 1;
-      // Use packRef so expand / slider commits aren't raced by a stale render closure.
-      const pushed = await pushViewPackToAccount(config, fresh, packRef.current, profileId);
+      screenPacksRef.current[studioScreenRef.current] = clonePack(packRef.current);
+      const payload = attachScreenPacks(
+        screenPacksRef.current.home,
+        screenPacksRef.current.movies,
+        screenPacksRef.current.shows,
+      );
+      const pushed = await pushViewPackToAccount(config, fresh, payload, profileId);
       if (library?.homeCatalogSettings) {
         await pushHomeCatalogSettings(
           config,
@@ -650,8 +707,8 @@ export default function App() {
         );
       }
       setShareMessage(
-        `Sent “${pushed.packName}” to your TV (profile ${pushed.profileId}). ` +
-          "On the SHIELD, accept the update when prompted — no need to reopen the app.",
+        `Sent Home, Movies, and TV Shows to your TV (profile ${pushed.profileId}). ` +
+          "On the SHIELD, accept the update when prompted — then switch tabs to see each layout.",
       );
       showToast(`Sent to TV · profile ${pushed.profileId}`);
     } catch (e) {
@@ -685,9 +742,17 @@ export default function App() {
         setShareMessage("No view pack on this account yet. Send to TV from Studio first.");
         return;
       }
-      replacePack(clonePack(pulled.pack), { select: "hero" });
-      setShareMessage(`Loaded “${pulled.pack.name}” from your TV account (profile ${pulled.profileId}).`);
-      showToast(`Loaded from TV · ${pulled.pack.name}`);
+      screenPacksRef.current = {
+        home: clonePack(pulled.pack),
+        movies: clonePack(pulled.movies ?? library?.moviesPack ?? pulled.pack),
+        shows: clonePack(pulled.shows ?? library?.showsPack ?? pulled.pack),
+      };
+      replacePack(clonePack(screenPacksRef.current[studioScreenRef.current]), { select: "hero" });
+      const loadedName = screenPacksRef.current[studioScreenRef.current].name;
+      setShareMessage(
+        `Loaded ${screenLabel(studioScreenRef.current)} from your TV account (profile ${pulled.profileId}).`,
+      );
+      showToast(`Loaded from TV · ${loadedName}`);
     } catch (e) {
       setShareError(true);
       setShareMessage(e instanceof Error ? e.message : String(e));
@@ -874,7 +939,7 @@ export default function App() {
             className="btn primary"
             onClick={() => void sendToTv()}
             disabled={shareBusy}
-            title={session ? "Push this pack to your signed-in Nuvio TV" : "Sign in first"}
+            title={session ? "Push Home, Movies, and TV Shows to your signed-in Nuvio TV" : "Sign in first"}
           >
             {shareBusy ? "Sending…" : "Send to TV"}
           </button>
@@ -989,19 +1054,32 @@ export default function App() {
               Nuvio TV repo
             </a>
             <span>
-              Authors vanilla Nuvio Netflix home (order, hero, focused-info, scales). Drag to reorder ·
-              Alt+↑/↓ · Ctrl+Z
+              Authors vanilla Nuvio Netflix Home, Movies, and TV Shows. Switch the tab above the canvas, drag to reorder, then Send to TV.
             </span>
           </div>
         </aside>
 
         <main className="stage">
           <div className="stage-bar">
+            <div className="screen-tabs" role="tablist" aria-label="Netflix screen">
+              {STUDIO_SCREENS.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={studioScreen === entry.id}
+                  className={`chip${studioScreen === entry.id ? " active" : ""}`}
+                  onClick={() => selectStudioScreen(entry.id)}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
             <span
               className="row-count"
-              title="Preview of vanilla Nuvio Netflix home (pack runtime contract v1)"
+              title={`Preview of vanilla Nuvio Netflix ${screenLabel(studioScreen)} (pack runtime contract v1)`}
             >
-              {rows.length} row{rows.length === 1 ? "" : "s"} · Netflix home · contract v1
+              {rows.length} row{rows.length === 1 ? "" : "s"} · Netflix {screenLabel(studioScreen)} · contract v1
             </span>
             <span
               className={`budget-pill${firstScreenRails > MAX_COUNTED_RAILS_IN_VIEWPORT ? " over" : ""}`}

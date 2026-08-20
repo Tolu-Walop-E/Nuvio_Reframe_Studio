@@ -32,6 +32,10 @@ export type NuvioLibrarySnapshot = {
   sources: LiveDataSource[];
   /** Pack mirroring this account’s Nuvio home rail order. */
   homePack: import("../types/viewPack").ViewPack;
+  /** Movie catalogs pulled from the same home settings (type = movie). */
+  moviesPack: import("../types/viewPack").ViewPack;
+  /** Series catalogs pulled from the same home settings (type = series). */
+  showsPack: import("../types/viewPack").ViewPack;
   /** Real posters/tiles keyed by dataSource id. */
   previewBoard: import("./previewBoard").PreviewBoard;
   /** Raw collection folders for expand-into-rails. */

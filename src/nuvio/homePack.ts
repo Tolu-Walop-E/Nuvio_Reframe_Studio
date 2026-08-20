@@ -1,5 +1,6 @@
 import type { ViewBlock, ViewPack } from "../types/viewPack";
 import { VIEWPORT_WIDTH, withComputedCanvas } from "../types/viewPack";
+import type { StudioScreen } from "./screenPacks";
 import type { LiveDataSource } from "./types";
 
 export type SyncCatalogItem = {
@@ -27,8 +28,27 @@ const RAIL_H = 210;
 const RAIL_GAP = 52;
 const PAD_X = 0;
 
+export function catalogTypeOfItem(item: SyncCatalogItem): string {
+  return String(item.type ?? "").trim().toLowerCase();
+}
+
+export function itemMatchesScreen(item: SyncCatalogItem, screen: StudioScreen): boolean {
+  if (screen === "home") return true;
+  if (item.is_collection || item.collection_id) return true;
+  const type = catalogTypeOfItem(item);
+  if (screen === "movies") return type === "movie";
+  return type === "series" || type === "tv" || type === "show";
+}
+
+export function sourceMatchesScreen(sourceId: string, screen: StudioScreen): boolean {
+  if (screen === "home") return true;
+  if (sourceId.startsWith("collection:")) return true;
+  if (screen === "movies") return sourceId.includes(":movie:");
+  return sourceId.includes(":series:") || sourceId.includes(":tv:") || sourceId.includes(":show:");
+}
+
 /**
- * Rebuild a Studio pack to mirror the user's Nuvio home catalog order.
+ * Rebuild a Studio pack to mirror the user's Nuvio catalog order for one Netflix tab.
  * Preview and Send-to-TV target vanilla Nuvio Netflix home (PACK_RUNTIME_CONTRACT.md).
  */
 export function buildPackFromNuvioHome(args: {
@@ -39,11 +59,21 @@ export function buildPackFromNuvioHome(args: {
   /** Real names keyed by catalogId and `type:catalogId` from addon manifests. */
   catalogNames?: Record<string, string>;
   hasGenreTargets?: boolean;
+  screen?: StudioScreen;
 }): ViewPack {
-  const { email, profileId, items, sources, catalogNames = {}, hasGenreTargets } = args;
+  const {
+    email,
+    profileId,
+    items,
+    sources,
+    catalogNames = {},
+    hasGenreTargets,
+    screen = "home",
+  } = args;
   const sourceById = new Map(sources.map((s) => [s.id, s]));
   const enabled = [...items]
     .filter((item) => item.enabled !== false)
+    .filter((item) => itemMatchesScreen(item, screen))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   const blocks: ViewBlock[] = [
@@ -123,7 +153,7 @@ export function buildPackFromNuvioHome(args: {
       dataSource;
     const isCollection = Boolean(item.is_collection) || dataSource.startsWith("collection:");
     blocks.push({
-      id: `home-rail-${index}-${slug(dataSource)}`,
+      id: `${screen}-rail-${index}-${slug(dataSource)}`,
       type: isCollection ? "collectionRail" : "mediaRail",
       x: PAD_X,
       y,
@@ -138,9 +168,13 @@ export function buildPackFromNuvioHome(args: {
     y += RAIL_H + RAIL_GAP;
   });
 
-  // If home settings were empty, fall back to every live catalog/collection.
+  // If settings were empty, fall back to live catalogs/collections for this tab.
   if (enabled.length === 0) {
-    const fallback = sources.filter((s) => s.kind === "catalog" || s.kind === "collection");
+    const fallback = sources.filter(
+      (s) =>
+        (s.kind === "catalog" || s.kind === "collection") &&
+        sourceMatchesScreen(s.id, screen),
+    );
     fallback.forEach((source, index) => {
       const isCollection = source.kind === "collection";
       blocks.push({
@@ -160,11 +194,31 @@ export function buildPackFromNuvioHome(args: {
     });
   }
 
+  const who = email.split("@")[0] || "account";
+  const names: Record<StudioScreen, { id: string; name: string; description: string }> = {
+    home: {
+      id: `nuvio-home-p${profileId}`,
+      name: `My Nuvio home · ${who}`,
+      description: "Synced from your Nuvio library order — edit blocks, then Send to TV.",
+    },
+    movies: {
+      id: `nuvio-movies-p${profileId}`,
+      name: `My Nuvio movies · ${who}`,
+      description: "Movie catalogs from your Nuvio library — reorder, then Send to TV.",
+    },
+    shows: {
+      id: `nuvio-shows-p${profileId}`,
+      name: `My Nuvio TV shows · ${who}`,
+      description: "TV show catalogs from your Nuvio library — reorder, then Send to TV.",
+    },
+  };
+  const meta = names[screen];
+
   return withComputedCanvas({
     schemaVersion: 1,
-    id: `nuvio-home-p${profileId}`,
-    name: `My Nuvio home · ${email.split("@")[0] || "account"}`,
-    description: "Synced from your Nuvio library order — edit blocks, then Publish link for TV.",
+    id: meta.id,
+    name: meta.name,
+    description: meta.description,
     canvas: { width: VIEWPORT_WIDTH, height: 1080 },
     blocks,
   });

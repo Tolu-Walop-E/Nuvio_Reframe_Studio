@@ -673,6 +673,11 @@ select:focus {
   background: var(--panel);
 }
 
+.screen-tabs {
+  display: flex;
+  gap: 5px;
+}
+
 .row-count {
   font-weight: 700;
   font-size: 12.5px;

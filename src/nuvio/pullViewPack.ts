@@ -1,7 +1,7 @@
 import { rpc } from "./client";
+import { parseScreenPacks } from "./screenPacks";
 import type { NuvioConfig, NuvioSession } from "./types";
 import type { ViewPack } from "../types/viewPack";
-import { parseViewPack } from "../demos";
 
 type PullRow = {
   profile_id?: number;
@@ -17,7 +17,13 @@ export async function pullViewPackFromAccount(
   config: NuvioConfig,
   session: NuvioSession,
   profileId: number,
-): Promise<{ pack: ViewPack; updatedAt?: string; profileId: number } | null> {
+): Promise<{
+  pack: ViewPack;
+  movies: ViewPack | null;
+  shows: ViewPack | null;
+  updatedAt?: string;
+  profileId: number;
+} | null> {
   const rows = await rpc<PullRow[]>(config, session, "sync_pull_view_pack", {
     p_profile_id: profileId,
   });
@@ -25,9 +31,11 @@ export async function pullViewPackFromAccount(
   if (!row?.pack_json || typeof row.pack_json !== "object") {
     return null;
   }
-  const pack = parseViewPack(row.pack_json);
+  const parsed = parseScreenPacks(row.pack_json);
   return {
-    pack,
+    pack: parsed.home,
+    movies: parsed.movies,
+    shows: parsed.shows,
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : undefined,
     profileId: typeof row.profile_id === "number" ? row.profile_id : profileId,
   };

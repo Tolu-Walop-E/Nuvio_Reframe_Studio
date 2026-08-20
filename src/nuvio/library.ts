@@ -137,7 +137,7 @@ export async function loadNuvioLibrary(
     catalogNames,
   );
 
-  const homePack = buildPackFromNuvioHome({
+  const packArgs = {
     email: session.email,
     profileId: activeProfileId,
     items: homeItems,
@@ -147,7 +147,10 @@ export async function loadNuvioLibrary(
       Object.keys(genreTargets).length > 0 ||
       genreChips.length > 0 ||
       collectionData.folders.some((c) => (c.title || "").toLowerCase() === "genres"),
-  });
+  };
+  const homePack = buildPackFromNuvioHome({ ...packArgs, screen: "home" });
+  const moviesPack = buildPackFromNuvioHome({ ...packArgs, screen: "movies" });
+  const showsPack = buildPackFromNuvioHome({ ...packArgs, screen: "shows" });
 
   // Register catalog URLs referenced by collection folders (Xperience, etc.).
   for (const collection of collectionData.folders) {
@@ -163,7 +166,11 @@ export async function loadNuvioLibrary(
     }
   }
 
-  const neededSourceIds = homePack.blocks.map((b) => b.dataSource);
+  const neededSourceIds = [
+    ...homePack.blocks,
+    ...moviesPack.blocks,
+    ...showsPack.blocks,
+  ].map((b) => b.dataSource);
   const previewBoard = await buildPreviewBoard({
     sources,
     neededSourceIds,
@@ -177,6 +184,8 @@ export async function loadNuvioLibrary(
     profiles,
     sources,
     homePack,
+    moviesPack,
+    showsPack,
     previewBoard,
     collections: collectionData.folders,
     catalogNames,
