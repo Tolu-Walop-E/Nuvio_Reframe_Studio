@@ -58,3 +58,16 @@ export function saveSession(session: NuvioSession | null) {
   }
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
+
+const PROFILE_KEY = "nuvio_reframe_studio.profileId";
+
+export function loadStudioProfileId(): number {
+  const raw = Number(localStorage.getItem(PROFILE_KEY));
+  if (Number.isInteger(raw) && raw >= 1 && raw <= 6) return raw;
+  return 1;
+}
+
+export function saveStudioProfileId(profileId: number) {
+  const id = Number.isInteger(profileId) ? Math.min(6, Math.max(1, profileId)) : 1;
+  localStorage.setItem(PROFILE_KEY, String(id));
+}

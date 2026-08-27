@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ensureFreshSession, signInWithPassword } from "../nuvio/client";
-import { defaultConfig, saveConfig, saveSession } from "../nuvio/config";
+import { defaultConfig, loadStudioProfileId, saveConfig, saveSession, saveStudioProfileId } from "../nuvio/config";
 import { loadNuvioLibrary } from "../nuvio/library";
 import type { NuvioConfig, NuvioLibrarySnapshot, NuvioSession } from "../nuvio/types";
 
@@ -28,8 +28,14 @@ export function AccountPanel({
   const [config, setConfig] = useState<NuvioConfig>(() => defaultConfig());
   const [email, setEmail] = useState(session?.email ?? "");
   const [password, setPassword] = useState("");
-  const [profileId, setProfileId] = useState(library?.profileId ?? 1);
+  const [profileId, setProfileId] = useState(() => library?.profileId ?? loadStudioProfileId());
   const [showKeys, setShowKeys] = useState(!config.supabaseUrl || !config.anonKey);
+
+  useEffect(() => {
+    if (library?.profileId == null) return;
+    setProfileId(library.profileId);
+    saveStudioProfileId(library.profileId);
+  }, [library?.profileId]);
 
   const saveKeys = () => {
     saveConfig(config);
@@ -47,6 +53,7 @@ export function AccountPanel({
       const snap = await loadNuvioLibrary(config, next, profileId);
       onLibrary(snap);
       setProfileId(snap.profileId);
+      saveStudioProfileId(snap.profileId);
       setPassword("");
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -67,6 +74,7 @@ export function AccountPanel({
       const snap = await loadNuvioLibrary(config, fresh, profileId);
       onLibrary(snap);
       setProfileId(snap.profileId);
+      saveStudioProfileId(snap.profileId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       onError(msg);
@@ -98,8 +106,8 @@ export function AccountPanel({
     <section className="account-panel">
       <h2>Connect</h2>
       <p className="hint">
-        Sign in with the same email and password as the TV app. Studio loads your home rail order,
-        collections, and catalogs.
+        Sign in with the same email as the TV. Pick her profile in the list before reloading.
+        Reload rebuilds that profile&apos;s live catalog home — not a Studio pack.
       </p>
 
       <button type="button" className="btn ghost full" onClick={() => setShowKeys((v) => !v)}>
@@ -168,6 +176,7 @@ export function AccountPanel({
                 onChange={(e) => {
                   const next = Number(e.target.value);
                   setProfileId(next);
+                  saveStudioProfileId(next);
                   void (async () => {
                     if (!session) return;
                     onError(null);
@@ -207,7 +216,7 @@ export function AccountPanel({
           </p>
           <div className="rail-section">
             <button type="button" className="btn ghost full" disabled={busy} onClick={() => void refresh()}>
-              {busy ? "Loading…" : "Reload my Nuvio home"}
+              {busy ? "Loading…" : "Reload live home"}
             </button>
             <button type="button" className="btn ghost full danger-text" onClick={signOut}>
               Sign out

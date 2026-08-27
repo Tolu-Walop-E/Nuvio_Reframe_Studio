@@ -3,7 +3,7 @@ import { AccountPanel } from "./account/AccountPanel";
 import { BLOCK_CATALOG, blockDef, type BlockType } from "./catalog/blocks";
 import { mergeDataSources, sourcesForBlock } from "./catalog/dataSources";
 import { DEMO_PACKS, clonePack } from "./demos";
-import { defaultConfig, loadSession, saveSession } from "./nuvio/config";
+import { defaultConfig, loadSession, loadStudioProfileId, saveSession, saveStudioProfileId } from "./nuvio/config";
 import { ensureFreshSession } from "./nuvio/client";
 import { loadNuvioLibrary } from "./nuvio/library";
 import type { NuvioLibrarySnapshot, NuvioSession } from "./nuvio/types";
@@ -380,13 +380,10 @@ export default function App() {
 
   const applyHomePack = useCallback(
     (snap: NuvioLibrarySnapshot) => {
-      if (snap.authoredHome) {
-        applyScreenBundle(snap.authoredHome, snap.authoredMovies, snap.authoredShows);
-        return;
-      }
+      // Live catalog / collection order for this profile — not a Studio pack.
       applyLibraryScreens(snap);
     },
-    [applyLibraryScreens, applyScreenBundle],
+    [applyLibraryScreens],
   );
 
   const selectStudioScreen = useCallback(
@@ -413,10 +410,11 @@ export default function App() {
           saveSession(fresh);
           setSession(fresh);
         }
-        const snap = await loadNuvioLibrary(defaultConfig(), fresh, 1);
+        const snap = await loadNuvioLibrary(defaultConfig(), fresh, loadStudioProfileId());
         if (cancelled) return;
         setLibrary(snap);
         setGenreTargets(snap.genreTargets);
+        saveStudioProfileId(snap.profileId);
         applyHomePack(snap);
       } catch (e) {
         if (cancelled) return;
@@ -435,8 +433,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.accessToken, applyHomePack]);
+  }, [session?.accessToken]);
 
   /** Auto-fit the TV frame to the stage so nothing needs manual zooming. */
   useLayoutEffect(() => {
@@ -825,7 +822,7 @@ export default function App() {
     try {
       if (!session) {
         setShareError(true);
-        setShareMessage("Sign in with your Nuvio account first, then press Load from TV.");
+        setShareMessage("Sign in with your Nuvio account first, then press Load Studio pack.");
         return;
       }
       const config = defaultConfig();
@@ -1125,9 +1122,9 @@ export default function App() {
             className="btn ghost"
             onClick={() => void loadFromTv()}
             disabled={shareBusy}
-            title={session ? "Load the pack currently on your Nuvio account / TV" : "Sign in first"}
+            title={session ? "Load the Studio pack last sent to this profile" : "Sign in first"}
           >
-            {shareBusy ? "Working…" : "Load from TV"}
+            {shareBusy ? "Working…" : "Load Studio pack"}
           </button>
           <button
             type="button"
