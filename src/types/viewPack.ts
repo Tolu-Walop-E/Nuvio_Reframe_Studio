@@ -71,6 +71,11 @@ export type ViewPack = {
    */
   collectionLandscapeScale?: number;
   /**
+   * Global collection rail title text size on Netflix home (1 = default 26sp).
+   * Honored on vanilla. Catalog row titles are unchanged.
+   */
+  collectionTitleScale?: number;
+  /**
    * Global: open every collection folder in this pack's Reframe / Netflix view
    * (hero + rails) instead of the old Nuvio tabbed grid. Per-rail
    * `collectionOpenStyle` still overrides for that collection when set.

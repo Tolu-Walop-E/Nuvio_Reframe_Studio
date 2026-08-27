@@ -263,6 +263,10 @@ export function parseViewPack(raw: unknown): ViewPack {
       typeof obj.collectionLandscapeScale === "number"
         ? Math.min(2, Math.max(0.7, Math.round(obj.collectionLandscapeScale * 100) / 100))
         : undefined,
+    collectionTitleScale:
+      typeof obj.collectionTitleScale === "number"
+        ? Math.min(2, Math.max(0.7, Math.round(obj.collectionTitleScale * 100) / 100))
+        : undefined,
     collectionsOpenInReframe: obj.collectionsOpenInReframe === true,
     rotateUnlocked: obj.rotateUnlocked === true,
     rotateIntervalHours,

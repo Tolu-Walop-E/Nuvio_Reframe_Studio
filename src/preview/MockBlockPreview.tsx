@@ -2,9 +2,11 @@ import type { CSSProperties } from "react";
 import type { CollectionFolderPreview, PreviewBoard, PreviewItem } from "../nuvio/previewBoard";
 import type { ViewBlock, ViewPack } from "../types/viewPack";
 import {
+  DEFAULT_PACK_CARD_SCALE,
   FOCUSED_METADATA_HEIGHT,
   MAX_LABELED_POSTER_HEIGHT,
   blockShowsFocusedPosterInfo,
+  normalizePackCardScale,
 } from "../types/viewPack";
 import { parseCollectionHubDataSource, railTitleWithCatalogType } from "../views/expandCollection";
 
@@ -56,7 +58,7 @@ type Props = {
   block: ViewBlock;
   preview: boolean;
   board?: PreviewBoard | null;
-  pack?: Pick<ViewPack, "showFocusedPosterInfo"> | null;
+  pack?: Pick<ViewPack, "showFocusedPosterInfo" | "collectionTitleScale"> | null;
   /** Live collection folders — used when a text-pill rail is bound to `collection:id`. */
   collections?: CollectionFolderPreview[] | null;
 };
@@ -186,12 +188,17 @@ export function MockBlockPreview({ block, preview, board, pack, collections }: P
     GENRES[hash(block.id) % GENRES.length],
     landscape ? "1h 48m" : "2h 12m",
   ].join("  ·  ");
+  const baseTitleSize = Math.max(16, Math.min(26, Math.round(block.h * 0.12)));
+  const titleScale =
+    block.type === "collectionRail"
+      ? normalizePackCardScale(pack?.collectionTitleScale ?? DEFAULT_PACK_CARD_SCALE)
+      : 1;
 
   return (
     <div className={`mock mock-rail${preview ? " rich" : ""}${showLabels ? " has-labels" : ""}`}>
       <div
         className="mock-rail-title"
-        style={{ fontSize: Math.max(16, Math.min(26, Math.round(block.h * 0.12))) }}
+        style={{ fontSize: Math.round(baseTitleSize * titleScale) }}
       >
         {railTitleWithCatalogType(block.label, block.dataSource) || block.type}
       </div>

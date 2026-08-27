@@ -2007,6 +2007,35 @@ export default function App() {
                 </span>
               </label>
 
+              <label>
+                Collection title size
+                <span className="badge honored">Honored</span>
+                <input
+                  type="range"
+                  min={MIN_PACK_CARD_SCALE}
+                  max={MAX_PACK_CARD_SCALE}
+                  step={0.05}
+                  value={normalizePackCardScale(
+                    pack.collectionTitleScale ?? DEFAULT_PACK_CARD_SCALE,
+                  )}
+                  onPointerDown={beginScalePreview}
+                  onChange={(e) =>
+                    previewPack((prev) => ({
+                      ...prev,
+                      collectionTitleScale: normalizePackCardScale(Number(e.target.value)),
+                    }))
+                  }
+                />
+                <span className="hint quiet">
+                  {Math.round(
+                    normalizePackCardScale(
+                      pack.collectionTitleScale ?? DEFAULT_PACK_CARD_SCALE,
+                    ) * 100,
+                  )}
+                  % · collection rail headings (Streaming Services, …) · live preview
+                </span>
+              </label>
+
               <label className="checkbox">
                 <input
                   type="checkbox"
