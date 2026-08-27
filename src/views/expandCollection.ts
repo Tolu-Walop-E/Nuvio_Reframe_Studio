@@ -319,6 +319,36 @@ export function expandFolderIntoCatalogRails(
   });
 }
 
+/** Expand the collection hub with this id, regardless of Studio block id. */
+export function expandCollectionHubById(
+  pack: ViewPack,
+  collectionId: string,
+  collections: CollectionFolderPreview[],
+  catalogNames: Record<string, string> = {},
+  keep: ExpandKeepOnly = "all",
+): ViewPack | null {
+  const block = pack.blocks.find(
+    (b) => b.type === "collectionRail" && parseCollectionHubDataSource(b.dataSource) === collectionId,
+  );
+  if (!block) return null;
+  return expandCollectionIntoContentRails(pack, block.id, collections, catalogNames, keep);
+}
+
+/** Expand a `collection:id:folder:id` rail on another screen that still has that folder. */
+export function expandFolderByIds(
+  pack: ViewPack,
+  collectionId: string,
+  folderId: string,
+  collections: CollectionFolderPreview[],
+  catalogNames: Record<string, string> = {},
+  keep: ExpandKeepOnly = "all",
+): ViewPack | null {
+  const ds = folderDataSourceId(collectionId, folderId);
+  const block = pack.blocks.find((b) => b.dataSource === ds);
+  if (!block) return null;
+  return expandFolderIntoCatalogRails(pack, block.id, collections, catalogNames, keep);
+}
+
 function slugId(value: string): string {
   return value.replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 28);
 }

@@ -37,6 +37,8 @@ import {
 import {
   expandCollectionIntoContentRails,
   expandFolderIntoCatalogRails,
+  expandCollectionHubById,
+  expandFolderByIds,
   parseFolderDataSource,
   parseCollectionHubDataSource,
   dataSourceTypeLabel,
@@ -932,8 +934,16 @@ export default function App() {
     }
     let next = packRef.current;
     let expanded = 0;
+    const hubIds: string[] = [];
+    const folderIds: Array<{ collectionId: string; folderId: string }> = [];
     for (const block of targets) {
       const folder = parseFolderDataSource(block.dataSource);
+      if (folder) {
+        folderIds.push(folder);
+      } else {
+        const hub = parseCollectionHubDataSource(block.dataSource);
+        if (hub) hubIds.push(hub);
+      }
       const result = folder
         ? expandFolderIntoCatalogRails(
             next,
@@ -963,6 +973,42 @@ export default function App() {
       return;
     }
     commit(next);
+    const currentScreen = studioScreenRef.current;
+    for (const screen of ["home", "movies", "shows"] as const) {
+      if (screen === currentScreen) continue;
+      const keep =
+        screen === "movies" ? "movie" : screen === "shows" ? "series" : expandKeepOnly;
+      let other = screenPacksRef.current[screen];
+      let changed = false;
+      for (const id of hubIds) {
+        const result = expandCollectionHubById(
+          other,
+          id,
+          library.collections,
+          library.catalogNames ?? {},
+          keep,
+        );
+        if (result) {
+          other = result;
+          changed = true;
+        }
+      }
+      for (const folder of folderIds) {
+        const result = expandFolderByIds(
+          other,
+          folder.collectionId,
+          folder.folderId,
+          library.collections,
+          library.catalogNames ?? {},
+          keep,
+        );
+        if (result) {
+          other = result;
+          changed = true;
+        }
+      }
+      if (changed) screenPacksRef.current[screen] = other;
+    }
     const created = next.blocks.filter((b) => parseCatalogDataSource(b.dataSource));
     selectOnly(created[0]?.id ?? next.blocks[0]?.id ?? null);
     const suffix =
