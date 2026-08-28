@@ -1723,9 +1723,15 @@ export default function App() {
                           checked={selected.posterGrow !== false}
                           onChange={(e) => updateBlock(selected.id, { posterGrow: e.target.checked })}
                         />
-                        Posters grow when focused
+                        Wide landscape tiles
                         <span className="badge honored">Honored</span>
                       </label>
+                    )}
+                    {selected.type === "mediaRail" && selected.dataSource !== "continueWatching" && (
+                      <p className="hint">
+                        On: tiles fill a wide landscape focus frame (smooth left/right). Off: portrait
+                        tiles, same constant frame. Overall size is Catalog poster size.
+                      </p>
                     )}
                   </>
                 )}
@@ -1971,7 +1977,7 @@ export default function App() {
                     normalizePackCardScale(pack.catalogPosterScale ?? DEFAULT_PACK_CARD_SCALE) *
                       100,
                   )}
-                  % · media / catalog title rails · live preview
+                  % · media / catalog title rails and their focus frame · live preview
                   {pack.showFocusedPosterInfo
                     ? " · max keeps ≥2 detail lines under posters"
                     : ""}
@@ -2008,7 +2014,7 @@ export default function App() {
               </label>
 
               <label>
-                Collection title size
+                Rail title size
                 <span className="badge honored">Honored</span>
                 <input
                   type="range"
@@ -2032,7 +2038,7 @@ export default function App() {
                       pack.collectionTitleScale ?? DEFAULT_PACK_CARD_SCALE,
                     ) * 100,
                   )}
-                  % · collection rail headings (Streaming Services, …) · live preview
+                  % · row headings (Trending, Streaming Services, Continue Watching, …) · live preview
                 </span>
               </label>
 

@@ -16,10 +16,10 @@ Target presentation: **Netflix home** (`HomeLayout.NETFLIX` / pack-forced Netfli
 | Pack `collectionsOpenInReframe` | All collection folders open in this pack’s Netflix / Reframe presentation (not the old grid) |
 | Per-rail `collectionOpenStyle: "reframe"` / `"grid"` / `"rows"` | Overrides the pack global for that collection only |
 | Per-block `trailer` (hero + catalog rails) | In-card / hero trailer autoplay when Layout trailers are also enabled |
-| Per-block `posterGrow` (catalog rails) | Focus expands card to landscape width; `false` keeps portrait |
+| Per-block `posterGrow` (catalog rails) | Wide landscape tiles that fill the focus frame; `false` keeps portrait width (no grow animation) |
 | Pack `catalogPosterScale` | Global catalog/media poster size (0.7–2.0); with focused info on, max still leaves ≥2 footer lines |
 | Pack `collectionLandscapeScale` | Global collection hub landscape tile size (0.7–2.0) |
-| Pack `collectionTitleScale` | Global collection rail title text size (0.7–2.0); catalog row titles unchanged |
+| Pack `collectionTitleScale` | Global rail heading text size (0.7–2.0) for collection and catalog rows |
 | Continue Watching / top nav blocks | Chrome the TV already owns (presence acknowledged; not freeform-placed) |
 | `genreRail` + `collection:id` | Text pills from that collection’s folder titles (wrap-width). Opens the folder. |
 | `genreRail` + `genres` | Legacy: TV fills pills from installed genre catalogs |

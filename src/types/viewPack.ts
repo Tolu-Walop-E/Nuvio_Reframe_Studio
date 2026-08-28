@@ -71,8 +71,8 @@ export type ViewPack = {
    */
   collectionLandscapeScale?: number;
   /**
-   * Global collection rail title text size on Netflix home (1 = default 26sp).
-   * Honored on vanilla. Catalog row titles are unchanged.
+   * Global rail heading text size on Netflix home (1 = default 26sp).
+   * Honored on vanilla for collection and catalog row titles (e.g. Trending).
    */
   collectionTitleScale?: number;
   /**

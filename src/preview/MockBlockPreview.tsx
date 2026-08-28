@@ -147,7 +147,17 @@ export function MockBlockPreview({ block, preview, board, pack, collections }: P
     const labels = pillPreviewLabels(block, collections);
     return (
       <div className={`mock mock-rail${preview ? " rich" : ""}`}>
-        <div className="mock-rail-title">{block.label || "Genres"}</div>
+        <div
+          className="mock-rail-title"
+          style={{
+            fontSize: Math.round(
+              22 *
+                normalizePackCardScale(pack?.collectionTitleScale ?? DEFAULT_PACK_CARD_SCALE),
+            ),
+          }}
+        >
+          {block.label || "Genres"}
+        </div>
         <div className={`mock-row align-${block.contentAlign ?? "start"}`}>
           {labels.map((g, i) => (
             <div
@@ -189,10 +199,9 @@ export function MockBlockPreview({ block, preview, board, pack, collections }: P
     landscape ? "1h 48m" : "2h 12m",
   ].join("  ·  ");
   const baseTitleSize = Math.max(16, Math.min(26, Math.round(block.h * 0.12)));
-  const titleScale =
-    block.type === "collectionRail"
-      ? normalizePackCardScale(pack?.collectionTitleScale ?? DEFAULT_PACK_CARD_SCALE)
-      : 1;
+  const titleScale = normalizePackCardScale(
+    pack?.collectionTitleScale ?? DEFAULT_PACK_CARD_SCALE,
+  );
 
   return (
     <div className={`mock mock-rail${preview ? " rich" : ""}${showLabels ? " has-labels" : ""}`}>
